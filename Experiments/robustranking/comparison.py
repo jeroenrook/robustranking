@@ -1,3 +1,4 @@
+import itertools
 from abc import abstractmethod, ABC
 import copy
 import warnings
@@ -99,6 +100,53 @@ class BootstrapComparison(AbstractAlgorithmComparison):
         else:
             self.rng = rng
 
+    def _get_samples(self, array: np.ndarray, meta_data: dict) -> np.ndarray:
+        """
+        Generates the samples
+        Args:
+            array:
+            meta_data:
+
+        Returns:
+
+        """
+        return self.rng.choice(np.arange(0, len(meta_data["instances"])),
+                               (len(meta_data["instances"]), self.bootstrap_runs),
+                               replace=True,)
+
+    def _statistical_test(self, s1: int, s2: int) -> (bool, float):
+        """
+        Performs a statistical test on the null hypothesis that algorithm 1 (s1) is equal or worse that algorithm 2 (s2)
+        Args:
+            s1:
+            s2:
+
+        Returns:
+            p-value of the test. If this value is below the alhpa value, then the hypothesis is rejected and s1 is
+            better than s2.
+        """
+        cache = self._get_cache()
+        distributions = cache["distributions"]
+
+        if self.minimise:
+            wins = np.count_nonzero(distributions[s1, :] >= distributions[s2, :])
+        else:
+            wins = np.count_nonzero(distributions[s1, :] <= distributions[s2, :])
+
+        p_value = wins / self.bootstrap_runs  # p-value
+
+        # p_value < self.alpha -> reject -> s1 is better performing than s2
+        # p_value >= self.alpha -> accept -> s1 is equal or worse performing than s2
+        return p_value
+
+    def statistical_test(self, algorithm1, algorithm2):
+        cache = self._get_cache()
+        algorithms = cache["meta_data"]["algorithms"]
+        s1 = algorithms.index(algorithm1)
+        s2 = algorithms.index(algorithm2)
+
+        return self._statistical_test(s1, s2)
+
     def compute(self):
         """
         Computes the bootstrap samples and collects for each algorithm the aggregated performance from each bootstrap
@@ -116,9 +164,7 @@ class BootstrapComparison(AbstractAlgorithmComparison):
 
         # Generate n bootstrap samples from the instances
         # TODO check if samples need to be aligned between the algorithms or not.
-        bootstraps = self.rng.choice(np.arange(0, len(meta_data["instances"])),
-                                     (len(meta_data["instances"]), self.bootstrap_runs),
-                                     replace=True,)
+        bootstraps = self._get_samples(array, meta_data)
 
         # Compute the performance of the algorithm on each bootstrap sample
         distributions = np.zeros((len(meta_data["algorithms"]), self.bootstrap_runs))
@@ -166,7 +212,7 @@ class BootstrapComparison(AbstractAlgorithmComparison):
             candidates = np.argwhere(candidates_mask).flatten()
             pvalues = np.zeros(len(candidates))
             for i, candidate in enumerate(candidates):
-                pvalues[i] = self.statistical_test(winner, candidate)  # H0: winner <= candidate
+                pvalues[i] = self._statistical_test(winner, candidate)  # H0: winner <= candidate
 
             # Multiple test correction
             # TODO iterative method instead of cutoff method as described in paper. Paragraph is illogical
@@ -193,9 +239,9 @@ class BootstrapComparison(AbstractAlgorithmComparison):
             for (algorithm, performance) in algorithms:
                 results.append({"algorithm": meta_data["algorithms"][algorithm],
                                 "rank": group+1,
-                                "performance": performance})
+                                "mean": performance})
 
-        return pd.DataFrame(results).set_index("algorithm").sort_values(["rank", "performance"])
+        return pd.DataFrame(results).set_index("algorithm").sort_values(["rank", "mean"])
 
     def get_confidence_intervals(self):
         """
@@ -208,40 +254,54 @@ class BootstrapComparison(AbstractAlgorithmComparison):
         meta_data = cache["meta_data"]
 
         lower_bound = self.alpha / 2
-        mean = 0.5
+        median = 0.5
         upper_bound = 1 - (self.alpha / 2)
 
-        confidence_bounds = np.quantile(distributions, (mean, lower_bound, upper_bound), axis=1)
+        confidence_bounds = np.quantile(distributions, (median, lower_bound, upper_bound), axis=1)
 
-        df = pd.DataFrame(confidence_bounds.T, columns=["mean", "lb", "ub"])
-        df["median"] = np.median(distributions, axis=1)
+        df = pd.DataFrame(confidence_bounds.T, columns=["median", "lb", "ub"])
         df["algorithm"] = meta_data["algorithms"]
         df = df.set_index("algorithm")
 
         return df
 
-    def statistical_test(self, s1: int, s2: int) -> (bool, float):
-        """
-        Performs a statistical test on the null hypothesis that algorithm 1 (s1) is equal or worse that algorithm 2 (s2)
-        Args:
-            s1:
-            s2:
-
-        Returns:
-            p-value of the test. If this value is below the alhpa value, then the hypothesis is rejected and s1 is
-            better than s2.
-        """
+    def get_bootstrap_distribution(self, algorithm: str):
         cache = self._get_cache()
-        distributions = cache["distributions"]
+        if algorithm not in cache["meta_data"]["algorithms"]:
+            raise LookupError(f"No distribution for '{algorithm}' found!")
+        index = cache["meta_data"]["algorithms"].index(algorithm)
+        return cache["distributions"][index, :]
 
-        if self.minimise:
-            wins = np.count_nonzero(distributions[s1, :] >= distributions[s2, :])
-        else:
-            wins = np.count_nonzero(distributions[s1, :] <= distributions[s2, :])
 
-        p_value = wins / self.bootstrap_runs  # p-value
+class SubSetComparison(BootstrapComparison):
+    def __init__(self,
+                 *args,
+                 subset_size: int = 2,
+                 **kwargs,):
+        """
 
-        # p_value < self.alpha -> reject -> s1 is better performing than s2
-        # p_value >= self.alpha -> accept -> s1 is equal or worse performing than s2
-        return p_value
+        Args:
+            benchmark: Benchmark class
+            minimise: Whether it is the goal to minimise or maximise the objectives
+            subset_size: the subset permutations
+            alpha: the alpha value
+            aggregation_method: a 1-D aggregation function. Default is np.mean
+            rng: Random number generator.
+        """
+        super().__init__(*args, **kwargs)
 
+        self.subset_size = subset_size
+
+    def _get_samples(self, array: np.ndarray, meta_data: dict) -> np.ndarray:
+        subsets = list(itertools.combinations(range(len(meta_data["instances"])), r=self.subset_size))
+        self.bootstrap_runs = len(subsets)
+        print(f"{self.bootstrap_runs} Samples")
+        bootstraps = np.zeros(
+            (len(meta_data["instances"]) - self.subset_size,
+             self.bootstrap_runs),
+            dtype=np.int
+        )
+        indices = np.arange(0, len(meta_data["instances"]))
+        for i, subset in enumerate(subsets):
+            bootstraps[:, i] = np.setdiff1d(indices, subset)
+        return bootstraps

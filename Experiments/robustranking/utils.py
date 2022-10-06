@@ -26,7 +26,7 @@ class PAR(ABC):
         self.k = k
         self.cutoff = cutoff
 
-    def __call__(self, array):
+    def __call__(self, array: [np.ndarray | pd.Series]):
         """
 
         Args:
