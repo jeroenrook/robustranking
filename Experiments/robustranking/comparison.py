@@ -4,6 +4,7 @@ import copy
 import warnings
 import numpy as np
 import pandas as pd
+from scipy.stats import gaussian_kde
 
 # Local imports
 from robustranking.benchmark import Benchmark
@@ -78,7 +79,7 @@ class BootstrapComparison(AbstractAlgorithmComparison):
                  bootstrap_runs: int = 10000,
                  alpha=0.05,
                  aggregation_method=np.mean,
-                 rng: [int, np.random.RandomState] = 42):
+                 rng: [int | np.random.RandomState] = 42):
         """
 
         Args:
@@ -271,6 +272,67 @@ class BootstrapComparison(AbstractAlgorithmComparison):
             raise LookupError(f"No distribution for '{algorithm}' found!")
         index = cache["meta_data"]["algorithms"].index(algorithm)
         return cache["distributions"][index, :]
+
+    def compute_instance_importance(self, seed: int = 42, resolution=256) -> pd.DataFrame:
+        cache = self._get_cache()
+        benchmark = self.benchmark
+        instances = cache["meta_data"]["instances"]
+        minimum = np.min(cache["distributions"])
+        maximum = np.max(cache["distributions"])
+
+        class KDE(object):
+            def __init__(self, res, lb, ub):
+                self.res = res
+                self.lb = lb
+                self.ub = ub
+
+            def __call__(self, array):
+                x = np.linspace(self.lb, self.ub, self.res)
+                kde = gaussian_kde(array)
+                return kde(x)
+
+        kde_method = KDE(resolution, minimum, maximum)
+        default_kdes = np.apply_along_axis(kde_method, 1, cache["distributions"])
+
+
+        effects = np.zeros(len(instances))
+        for i, instance in enumerate(instances):
+            print(instance)
+            temp = copy.copy(instances)
+            del temp[i]
+            self.benchmark = benchmark.filter(instances=temp)
+            self.compute()
+            cache = self._get_cache()
+            distributions = cache["distributions"]
+
+            kdes = np.apply_along_axis(kde_method, 1, distributions)
+            kdes = np.abs(kdes - default_kdes)
+            kdes = np.sum(kdes) #TODO check how to aggregate over the algorithms
+            effects[i] = kdes
+
+        #TODO find threshold for significant effect of an instance on distributions
+        #Normalize
+        # effects = 100*(effects / np.sum(effects))
+
+        df = pd.DataFrame(effects, columns=["effect"])
+        df["instance"] = instances
+        df = df.set_index("instance")
+
+        #Restore
+        self.benchmark = benchmark
+        self.cache = cache
+
+        return df.sort_values("effect", ascending=False)
+
+        
+
+
+
+
+
+
+
+
 
 
 class SubSetComparison(BootstrapComparison):
