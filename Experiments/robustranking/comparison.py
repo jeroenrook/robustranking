@@ -220,7 +220,7 @@ class BootstrapComparison(AbstractAlgorithmComparison):
 
         return df
 
-    def statistical_test(self, s1=0, s2=1) -> (bool, float):
+    def statistical_test(self, s1: int, s2: int) -> (bool, float):
         """
         Performs a statistical test on the null hypothesis that algorithm 1 (s1) is equal or worse that algorithm 2 (s2)
         Args:
