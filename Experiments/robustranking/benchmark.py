@@ -69,6 +69,16 @@ class Benchmark(ABC):
                 return False
         return True
 
+    def show_stats(self) -> pd.Series:
+        stats = {
+            "algorithms": len(self.algorithms),
+            "instances": len(self.instances),
+            "objectives": len(self.objectives),
+            "values": len(self._run_data),
+            "complete": self.check_complete()
+        }
+        return pd.Series(stats)
+
     def filter(self, *args, **kwargs) -> Self:
         """
         Creates a new benchmark class where the contents are filtered based on the given arguments.
@@ -222,7 +232,7 @@ class Benchmark(ABC):
             self._objective2index[objective].add(index)
 
     # Group imports
-    def from_pandas(self, df, algorithm_key, instance_key, objective_key, value_key):
+    def from_pandas(self, df, algorithm_key: [str | tuple], instance_key: [str | tuple], objective_keys: [str | tuple | list]):
         """
         Generate the class from a pandas DataFrame. Each key component should be a column as well as the value key.
         Other columns are ignored.
@@ -243,11 +253,14 @@ class Benchmark(ABC):
             self.add_algorithm(algorithm)
         for instance in df[instance_key].unique():
             self.add_instance(instance)
-        for objective in df[objective_key].unique():
-            self.add_objective(objective)
+        if not isinstance(objective_keys, list):
+            objective_keys = [objective_keys]
+        for objective_key in objective_keys:
+            self.add_objective(objective_key)
 
         for key, row in df.iterrows():
-            self.add_run(row[algorithm_key], row[instance_key], row[objective_key], row[value_key])
+            for objective_key in objective_keys:
+                self.add_run(row[algorithm_key], row[instance_key], objective_key, row[objective_key])
 
     # Exports
     def to_pandas(self, *args, **kwargs) -> pd.DataFrame:
