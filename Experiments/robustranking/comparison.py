@@ -4,7 +4,10 @@ import copy
 import warnings
 import numpy as np
 import pandas as pd
+from typing_extensions import Self
 from scipy.stats import gaussian_kde
+import matplotlib.pyplot as plt
+from statsmodels.stats.multitest import multipletests
 
 # Local imports
 from robustranking.benchmark import Benchmark
@@ -53,7 +56,7 @@ class AbstractAlgorithmComparison(ABC):
         return self._cache
 
     @abstractmethod
-    def compute(self) -> list:
+    def compute(self) -> Self:
         """
         Abstract method used to compute the intermediate results which are stored in the cache
         Returns:
@@ -70,6 +73,58 @@ class AbstractAlgorithmComparison(ABC):
         """
         raise NotImplementedError("Abstract algorithm comparison class has no ranking functionality")
 
+
+class AggregatedComparison(AbstractAlgorithmComparison):
+
+    def __init__(self,
+                 benchmark: Benchmark = Benchmark(),
+                 minimise: bool = True,
+                 aggregation_method=np.mean,):
+        super().__init__(benchmark, minimise)
+
+        self.aggregation_method = aggregation_method
+    def compute(self) -> Self:
+        assert self.benchmark.check_complete()
+        array, meta_data = self.benchmark.to_numpy()
+
+        aggregation = np.apply_along_axis(self.aggregation_method, 1, array)
+
+        self._cache = {
+            "array": array,
+            "meta_data": meta_data,
+            "aggregation": aggregation
+        }
+
+        return self
+
+    def get_ranking(self) -> pd.DataFrame:
+        cache = self._get_cache()
+        meta_data = cache["meta_data"]
+
+        aggregation = cache["aggregation"]
+        direction = 1 if self.minimise else -1
+        ranks = np.argsort(direction*aggregation, axis=0)
+        ranks = np.argsort(ranks, axis=0)  # Sort the ranks to make a mapping to the indexing
+        ranks = ranks + 1
+
+        results = []
+        for i, algorithm in enumerate(meta_data["algorithms"]):
+            result = {"algorithm": algorithm, }
+            if len(meta_data["objectives"]) == 1:
+                result["score"] = aggregation[i, 0]
+                result["rank"] = ranks[i, 0]
+            else:
+                for j, objective in enumerate(meta_data["objectives"]):
+                    result[(objective, "score")] = aggregation[i, j]
+                    result[(objective), "rank"] = ranks[i, j]
+
+            results.append(result)
+
+        df = pd.DataFrame(results).set_index("algorithm")
+        if len(meta_data["objectives"]) > 1:
+            df.columns = pd.MultiIndex.from_tuples(df.columns, names=[None, "objective"])
+
+        return df
 
 class BootstrapComparison(AbstractAlgorithmComparison):
 
@@ -115,7 +170,7 @@ class BootstrapComparison(AbstractAlgorithmComparison):
                                (len(meta_data["instances"]), self.bootstrap_runs),
                                replace=True,)
 
-    def _statistical_test(self, s1: int, s2: int) -> (bool, float):
+    def _statistical_test(self, s1: int, s2: int) -> float:
         """
         Performs a statistical test on the null hypothesis that algorithm 1 (s1) is equal or worse that algorithm 2 (s2)
         Args:
@@ -140,7 +195,7 @@ class BootstrapComparison(AbstractAlgorithmComparison):
         # p_value >= self.alpha -> accept -> s1 is equal or worse performing than s2
         return p_value
 
-    def statistical_test(self, algorithm1, algorithm2):
+    def statistical_test(self, algorithm1, algorithm2) -> float:
         cache = self._get_cache()
         algorithms = cache["meta_data"]["algorithms"]
         s1 = algorithms.index(algorithm1)
@@ -148,7 +203,7 @@ class BootstrapComparison(AbstractAlgorithmComparison):
 
         return self._statistical_test(s1, s2)
 
-    def compute(self):
+    def compute(self) -> Self:
         """
         Computes the bootstrap samples and collects for each algorithm the aggregated performance from each bootstrap
         sample.
@@ -176,10 +231,13 @@ class BootstrapComparison(AbstractAlgorithmComparison):
             distributions[i, :] = np.apply_along_axis(self.aggregation_method, 0, samples)
 
         self._cache = {
+            "array": array,
             "bootstraps": bootstraps,
             "distributions": distributions,
             "meta_data": meta_data,
         }
+
+        return self
 
     def get_ranking(self) -> pd.DataFrame:
         """
@@ -191,8 +249,7 @@ class BootstrapComparison(AbstractAlgorithmComparison):
         cache = self._get_cache()
         distributions = copy.copy(cache["distributions"])
         meta_data = cache["meta_data"]
-
-        candidates_mask = np.ones(len(meta_data["algorithms"]), dtype=bool)
+        n_algorithms = len(meta_data["algorithms"])
 
         groups = {}
         groupid = 0
@@ -200,6 +257,12 @@ class BootstrapComparison(AbstractAlgorithmComparison):
         replace = np.inf if self.minimise else -np.inf
         argfunc = np.argmin if self.minimise else np.argmax
 
+        fractional_wins = np.zeros(n_algorithms, dtype=np.float)
+        algos, wins = np.unique(argfunc(distributions, axis=0), return_counts=True)
+        fractional_wins[algos] = wins
+        fractional_wins = fractional_wins / self.bootstrap_runs
+
+        candidates_mask = np.ones(n_algorithms, dtype=bool)
         while np.count_nonzero(candidates_mask) > 0:
             # Find the winner amongst the remaining candidates
             distwins = argfunc(distributions, axis=0)
@@ -208,28 +271,35 @@ class BootstrapComparison(AbstractAlgorithmComparison):
             groups[groupid] = [(winner, np.mean(distributions[winner, :]))]
             candidates_mask[winner] = False  # Remove winner from candidates
             distributions[winner, :] = replace
+            if np.count_nonzero(candidates_mask) == 0:
+                break
 
             # Perform statistical tests to find candidates that are statistically tied
             candidates = np.argwhere(candidates_mask).flatten()
             pvalues = np.zeros(len(candidates))
             for i, candidate in enumerate(candidates):
                 pvalues[i] = self._statistical_test(winner, candidate)  # H0: winner <= candidate
-
             # Multiple test correction
             # TODO iterative method instead of cutoff method as described in paper. Paragraph is illogical
             pvalues_order = np.argsort(pvalues)
-            reject = np.zeros(len(candidates), dtype=bool)  # Do not reject any test by default
-            for i, index in enumerate(pvalues_order):
-                if pvalues[index] < self.alpha / (len(candidates)-i):
-                    # Reject H0 -> winner > candidate
-                    reject[index] = True
-                else:
-                    break
+            reject = pvalues < self.alpha  # no correction
+            reject = multipletests(pvalues, self.alpha, method="holm")[0]  # hommel
 
-            #Not rejecting means they are statistically tied
+            # TODO iterative method instead of cutoff method as described in paper. Paragraph is illogical
+            # Holm-Bonferroni
+            # reject = np.zeros(len(candidates), dtype=bool)  # Do not reject any test by default
+            # for i, index in enumerate(pvalues_order):
+            #     corrected_alpha = self.alpha / (len(candidates)-i)  # Holm-Bonferroni
+            #     if pvalues[index] < corrected_alpha:
+            #         # Reject H0 -> winner > candidate
+            #         reject[index] = True
+            #     else:
+            #         break
+
+            # Not rejecting means they are statistically tied
             ties = candidates[~reject]
             for candidate in ties:
-                groups[groupid].append((candidate, np.mean(distributions[candidate, :])))
+                groups[groupid].append((candidate, 0))
                 candidates_mask[candidate] = False
                 distributions[candidate, :] = replace
 
@@ -239,12 +309,16 @@ class BootstrapComparison(AbstractAlgorithmComparison):
         for group, algorithms in groups.items():
             for (algorithm, performance) in algorithms:
                 results.append({"algorithm": meta_data["algorithms"][algorithm],
-                                "rank": group+1,
-                                "mean": performance})
+                                "group": group+1,
+                                "ranked 1st": fractional_wins[algorithm], })
 
-        return pd.DataFrame(results).set_index("algorithm").sort_values(["rank", "mean"])
+        df = pd.DataFrame(results).set_index("algorithm").sort_values(["group", "ranked 1st"], ascending=[True, False])
+        df["remaining"] = (1 - df["ranked 1st"].cumsum()).round(4)
 
-    def get_confidence_intervals(self):
+
+        return df
+
+    def get_confidence_intervals(self) -> pd.DataFrame:
         """
         Computes the upper and lower bounds of the 1-alpha confidence interval.
         Returns:
@@ -323,16 +397,6 @@ class BootstrapComparison(AbstractAlgorithmComparison):
         self.cache = cache
 
         return df.sort_values("effect", ascending=False)
-
-        
-
-
-
-
-
-
-
-
 
 
 class SubSetComparison(BootstrapComparison):
