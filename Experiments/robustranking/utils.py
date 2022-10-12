@@ -158,7 +158,7 @@ def plot_ci_list(comparison: BootstrapComparison, top: int = -1, ax=None):
     handles.append(ax.scatter(*zip(*means), color="red", label="Median", alpha=0.8))
     handles.append(p)
 
-    ax.set_xlabel("PAR$_2$")
+    ax.set_xlabel("Performance")
     ax.set_ylabel("Solver")
     ax.set_yticks(list(range(1, n + 1)))
     ax.set_yticklabels(yticks[::-1])
