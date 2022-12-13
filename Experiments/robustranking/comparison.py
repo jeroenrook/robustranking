@@ -78,7 +78,7 @@ class AggregatedComparison(AbstractAlgorithmComparison):
 
     def __init__(self,
                  benchmark: Benchmark = Benchmark(),
-                 minimise: bool = True,
+                 minimise: [bool | dict] = True,
                  aggregation_method=np.mean,):
         super().__init__(benchmark, minimise)
 
@@ -87,7 +87,14 @@ class AggregatedComparison(AbstractAlgorithmComparison):
         assert self.benchmark.check_complete()
         array, meta_data = self.benchmark.to_numpy()
 
-        aggregation = np.apply_along_axis(self.aggregation_method, 1, array)
+        if len(meta_data["objectives"]) > 1 and isinstance(self.aggregation_method, dict):
+            aggregation = np.zeros(shape=(len(meta_data["algorithms"]), len(meta_data["objectives"])))
+            for o in meta_data["objectives"]:
+                agg = self.aggregation_method[o]
+                objindex = meta_data["objectives"].index(o)
+                aggregation[:, objindex] = np.apply_along_axis(agg, 1, array[:, :, objindex])
+        else:
+            aggregation = np.apply_along_axis(self.aggregation_method, 1, array)
 
         self._cache = {
             "array": array,
@@ -102,7 +109,10 @@ class AggregatedComparison(AbstractAlgorithmComparison):
         meta_data = cache["meta_data"]
 
         aggregation = cache["aggregation"]
-        direction = 1 if self.minimise else -1
+        if len(meta_data["objectives"]) > 1 and isinstance(self.aggregation_method, dict):
+            direction = [1 if self.minimise[o] else -1 for o in meta_data["objectives"]]
+        else:
+            direction = 1 if self.minimise else -1
         ranks = np.argsort(direction*aggregation, axis=0)
         ranks = np.argsort(ranks, axis=0)  # Sort the ranks to make a mapping to the indexing
         ranks = ranks + 1
@@ -115,8 +125,8 @@ class AggregatedComparison(AbstractAlgorithmComparison):
                 result["rank"] = ranks[i, 0]
             else:
                 for j, objective in enumerate(meta_data["objectives"]):
+                    result[(objective, "rank")] = ranks[i, j]
                     result[(objective, "score")] = aggregation[i, j]
-                    result[(objective), "rank"] = ranks[i, j]
 
             results.append(result)
 
