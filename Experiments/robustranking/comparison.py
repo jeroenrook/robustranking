@@ -8,9 +8,11 @@ from typing_extensions import Self
 from scipy.stats import gaussian_kde
 import matplotlib.pyplot as plt
 from statsmodels.stats.multitest import multipletests
+from pygmo import fast_non_dominated_sorting
 
 # Local imports
 from robustranking.benchmark import Benchmark
+
 
 class AbstractAlgorithmComparison(ABC):
     """
@@ -62,7 +64,8 @@ class AbstractAlgorithmComparison(ABC):
         Returns:
 
         """
-        raise NotImplementedError("Abstract algorithm comparison class has no comparison functionality")
+        raise NotImplementedError(
+            "Abstract algorithm comparison class has no comparison functionality")
 
     @abstractmethod
     def get_ranking(self) -> pd.DataFrame:
@@ -71,7 +74,8 @@ class AbstractAlgorithmComparison(ABC):
         Returns:
 
         """
-        raise NotImplementedError("Abstract algorithm comparison class has no ranking functionality")
+        raise NotImplementedError(
+            "Abstract algorithm comparison class has no ranking functionality")
 
 
 class AggregatedComparison(AbstractAlgorithmComparison):
@@ -79,20 +83,24 @@ class AggregatedComparison(AbstractAlgorithmComparison):
     def __init__(self,
                  benchmark: Benchmark = Benchmark(),
                  minimise: [bool | dict] = True,
-                 aggregation_method=np.mean,):
+                 aggregation_method=np.mean, ):
         super().__init__(benchmark, minimise)
 
         self.aggregation_method = aggregation_method
+
     def compute(self) -> Self:
         assert self.benchmark.check_complete()
         array, meta_data = self.benchmark.to_numpy()
 
-        if len(meta_data["objectives"]) > 1 and isinstance(self.aggregation_method, dict):
-            aggregation = np.zeros(shape=(len(meta_data["algorithms"]), len(meta_data["objectives"])))
+        if len(meta_data["objectives"]) > 1 and isinstance(self.aggregation_method,
+                                                           dict):
+            aggregation = np.zeros(
+                shape=(len(meta_data["algorithms"]), len(meta_data["objectives"])))
             for o in meta_data["objectives"]:
                 agg = self.aggregation_method[o]
                 objindex = meta_data["objectives"].index(o)
-                aggregation[:, objindex] = np.apply_along_axis(agg, 1, array[:, :, objindex])
+                aggregation[:, objindex] = np.apply_along_axis(agg, 1,
+                                                               array[:, :, objindex])
         else:
             aggregation = np.apply_along_axis(self.aggregation_method, 1, array)
 
@@ -109,12 +117,14 @@ class AggregatedComparison(AbstractAlgorithmComparison):
         meta_data = cache["meta_data"]
 
         aggregation = cache["aggregation"]
-        if len(meta_data["objectives"]) > 1 and isinstance(self.aggregation_method, dict):
+        if len(meta_data["objectives"]) > 1 and isinstance(self.aggregation_method,
+                                                           dict):
             direction = [1 if self.minimise[o] else -1 for o in meta_data["objectives"]]
         else:
             direction = 1 if self.minimise else -1
-        ranks = np.argsort(direction*aggregation, axis=0)
-        ranks = np.argsort(ranks, axis=0)  # Sort the ranks to make a mapping to the indexing
+        ranks = np.argsort(direction * aggregation, axis=0)
+        ranks = np.argsort(ranks,
+                           axis=0)  # Sort the ranks to make a mapping to the indexing
         ranks = ranks + 1
 
         results = []
@@ -135,6 +145,7 @@ class AggregatedComparison(AbstractAlgorithmComparison):
             df.columns = pd.MultiIndex.from_tuples(df.columns, names=[None, "objective"])
 
         return df
+
 
 class BootstrapComparison(AbstractAlgorithmComparison):
 
@@ -166,7 +177,7 @@ class BootstrapComparison(AbstractAlgorithmComparison):
         else:
             self.rng = rng
 
-    def _get_samples(self, array: np.ndarray, meta_data: dict) -> np.ndarray:
+    def _get_samples(self, num_instances: int, bootstrap_runs: int = None) -> np.ndarray:
         """
         Generates the samples
         Args:
@@ -176,20 +187,23 @@ class BootstrapComparison(AbstractAlgorithmComparison):
         Returns:
 
         """
-        return self.rng.choice(np.arange(0, len(meta_data["instances"])),
-                               (len(meta_data["instances"]), self.bootstrap_runs),
-                               replace=True,)
+        bootstrap_runs = self.bootstrap_runs if bootstrap_runs is None else bootstrap_runs
+
+        return self.rng.choice(np.arange(0, num_instances),
+                               size=(num_instances, bootstrap_runs),
+                               replace=True, )
 
     def _statistical_test(self, s1: int, s2: int) -> float:
         """
-        Performs a statistical test on the null hypothesis that algorithm 1 (s1) is equal or worse that algorithm 2 (s2)
+        Performs a statistical test on the null hypothesis that algorithm 1 (s1) is equal
+        or worse that algorithm 2 (s2).
         Args:
             s1:
             s2:
 
         Returns:
-            p-value of the test. If this value is below the alhpa value, then the hypothesis is rejected and s1 is
-            better than s2.
+            p-value of the test. If this value is below the alpha value, then the
+            hypothesis is rejected and s1 is better than s2.
         """
         cache = self._get_cache()
         distributions = cache["distributions"]
@@ -210,7 +224,6 @@ class BootstrapComparison(AbstractAlgorithmComparison):
         algorithms = cache["meta_data"]["algorithms"]
         s1 = algorithms.index(algorithm1)
         s2 = algorithms.index(algorithm2)
-
         return self._statistical_test(s1, s2)
 
     def compute(self) -> Self:
@@ -223,22 +236,30 @@ class BootstrapComparison(AbstractAlgorithmComparison):
         assert self.benchmark.check_complete(), "Benchmark table is not complete. Cannot compare."
         array, meta_data = self.benchmark.to_numpy()
 
-        if len(meta_data["objectives"]) > 1:
-            warnings.warn("Benchmark has more than one objective. Using first objective. "
-                          "Consider filtering the benchmark. ")
-            array = array[:, :, 0]
+        if len(array.shape) == 2:
+            array = array.reshape(-1, -1, 1)
+        if len(array.shape) != 3:
+            raise "Dimension error"
 
         # Generate n bootstrap samples from the instances
-        # TODO check if samples need to be aligned between the algorithms or not.
-        bootstraps = self._get_samples(array, meta_data)
+        bootstraps = self._get_samples(len(meta_data["instances"]))
 
         # Compute the performance of the algorithm on each bootstrap sample
-        distributions = np.zeros((len(meta_data["algorithms"]), self.bootstrap_runs))
-        for i in range(array.shape[0]):  # Each algorithm
-            performance = array[i, :]
+        distributions = np.zeros((len(meta_data["algorithms"]),
+                                  self.bootstrap_runs,
+                                  len(meta_data["objectives"])))
+
+        for alg, obj in itertools.product(range(array.shape[0]), range(array.shape[2])):
+            performance = array[alg, :, obj]
             samples = np.take(performance, bootstraps)
             # Compute aggregated performance
-            distributions[i, :] = np.apply_along_axis(self.aggregation_method, 0, samples)
+            agg_method = self.aggregation_method
+
+            if isinstance(self.aggregation_method, dict):
+                agg_method = self.aggregation_method[meta_data["objectives"][obj]]
+
+            distributions[alg, :, obj] = np.apply_along_axis(agg_method, 0,
+                                                             samples)
 
         self._cache = {
             "array": array,
@@ -267,7 +288,7 @@ class BootstrapComparison(AbstractAlgorithmComparison):
         replace = np.inf if self.minimise else -np.inf
         argfunc = np.argmin if self.minimise else np.argmax
 
-        fractional_wins = np.zeros(n_algorithms, dtype=np.float)
+        fractional_wins = np.zeros(n_algorithms, dtype=float)
         algos, wins = np.unique(argfunc(distributions, axis=0), return_counts=True)
         fractional_wins[algos] = wins
         fractional_wins = fractional_wins / self.bootstrap_runs
@@ -288,23 +309,25 @@ class BootstrapComparison(AbstractAlgorithmComparison):
             candidates = np.argwhere(candidates_mask).flatten()
             pvalues = np.zeros(len(candidates))
             for i, candidate in enumerate(candidates):
-                pvalues[i] = self._statistical_test(winner, candidate)  # H0: winner <= candidate
+                pvalues[i] = self._statistical_test(winner,
+                                                    candidate)  # H0: winner <= candidate
             # Multiple test correction
             # TODO iterative method instead of cutoff method as described in paper. Paragraph is illogical
             pvalues_order = np.argsort(pvalues)
-            reject = pvalues < self.alpha  # no correction
-            reject = multipletests(pvalues, self.alpha, method="holm")[0]  # hommel
+            # reject = pvalues < self.alpha  # no correction
+            # reject = multipletests(pvalues, self.alpha, method="holm")[0]  # hommel
 
             # TODO iterative method instead of cutoff method as described in paper. Paragraph is illogical
             # Holm-Bonferroni
-            # reject = np.zeros(len(candidates), dtype=bool)  # Do not reject any test by default
-            # for i, index in enumerate(pvalues_order):
-            #     corrected_alpha = self.alpha / (len(candidates)-i)  # Holm-Bonferroni
-            #     if pvalues[index] < corrected_alpha:
-            #         # Reject H0 -> winner > candidate
-            #         reject[index] = True
-            #     else:
-            #         break
+            reject = np.zeros(len(candidates),
+                              dtype=bool)  # Do not reject any test by default
+            for i, index in enumerate(pvalues_order):
+                corrected_alpha = self.alpha / (len(candidates) - i)  # Holm-Bonferroni
+                if pvalues[index] < corrected_alpha:
+                    # Reject H0 -> winner > candidate
+                    reject[index] = True
+                else:
+                    break
 
             # Not rejecting means they are statistically tied
             ties = candidates[~reject]
@@ -319,12 +342,12 @@ class BootstrapComparison(AbstractAlgorithmComparison):
         for group, algorithms in groups.items():
             for (algorithm, performance) in algorithms:
                 results.append({"algorithm": meta_data["algorithms"][algorithm],
-                                "group": group+1,
+                                "group": group + 1,
                                 "ranked 1st": fractional_wins[algorithm], })
 
-        df = pd.DataFrame(results).set_index("algorithm").sort_values(["group", "ranked 1st"], ascending=[True, False])
+        df = pd.DataFrame(results).set_index("algorithm").sort_values(
+            ["group", "ranked 1st"], ascending=[True, False])
         df["remaining"] = (1 - df["ranked 1st"].cumsum()).round(4)
-
 
         return df
 
@@ -342,7 +365,8 @@ class BootstrapComparison(AbstractAlgorithmComparison):
         median = 0.5
         upper_bound = 1 - (self.alpha / 2)
 
-        confidence_bounds = np.quantile(distributions, (median, lower_bound, upper_bound), axis=1)
+        confidence_bounds = np.quantile(distributions,
+                                        (median, lower_bound, upper_bound), axis=1)
 
         df = pd.DataFrame(confidence_bounds.T, columns=["median", "lb", "ub"])
         df["algorithm"] = meta_data["algorithms"]
@@ -357,7 +381,8 @@ class BootstrapComparison(AbstractAlgorithmComparison):
         index = cache["meta_data"]["algorithms"].index(algorithm)
         return cache["distributions"][index, :]
 
-    def compute_instance_importance(self, seed: int = 42, resolution=256) -> pd.DataFrame:
+    def compute_instance_importance(self, seed: int = 42,
+                                    resolution=256) -> pd.DataFrame:
         cache = self._get_cache()
         benchmark = self.benchmark
         instances = cache["meta_data"]["instances"]
@@ -365,6 +390,10 @@ class BootstrapComparison(AbstractAlgorithmComparison):
         maximum = np.max(cache["distributions"])
 
         class KDE(object):
+            """
+            Kernel density estimation
+            """
+
             def __init__(self, res, lb, ub):
                 self.res = res
                 self.lb = lb
@@ -378,7 +407,6 @@ class BootstrapComparison(AbstractAlgorithmComparison):
         kde_method = KDE(resolution, minimum, maximum)
         default_kdes = np.apply_along_axis(kde_method, 1, cache["distributions"])
 
-
         effects = np.zeros(len(instances))
         for i, instance in enumerate(instances):
             print(instance)
@@ -391,29 +419,196 @@ class BootstrapComparison(AbstractAlgorithmComparison):
 
             kdes = np.apply_along_axis(kde_method, 1, distributions)
             kdes = np.abs(kdes - default_kdes)
-            kdes = np.sum(kdes) #TODO check how to aggregate over the algorithms
+            kdes = np.sum(kdes)  # TODO check how to aggregate over the algorithms
             effects[i] = kdes
 
-        #TODO find threshold for significant effect of an instance on distributions
-        #Normalize
+        # TODO find threshold for significant effect of an instance on distributions
+        # Normalize
         # effects = 100*(effects / np.sum(effects))
 
         df = pd.DataFrame(effects, columns=["effect"])
         df["instance"] = instances
         df = df.set_index("instance")
 
-        #Restore
+        # Restore
         self.benchmark = benchmark
         self.cache = cache
 
         return df.sort_values("effect", ascending=False)
 
 
+class MOBootstrapComparison(BootstrapComparison):
+    def __init__(self,
+                 benchmark: Benchmark = Benchmark(),
+                 minimise: [dict | bool] = True,
+                 bootstrap_runs: int = 10000,
+                 alpha=0.05,
+                 aggregation_method=np.mean,
+                 rng: [int | np.random.RandomState] = 42):
+        """
+
+        Args:
+            benchmark: Benchmark class
+            minimise: Whether it is the goal to minimise or maximise the objectives.
+                Can be different for each objective.
+            bootstrap_runs: the number of bootstrap samples that should be generated
+            alpha: the alpha value
+            aggregation_method: a 1-D aggregation function. Default is np.mean. Can be
+                different for each objective.
+            rng: Random number generator.
+        """
+        super().__init__(benchmark, minimise, bootstrap_runs, alpha, aggregation_method,
+                         rng)
+
+    @staticmethod
+    def _dominates(x, y):
+        """
+            assumes minimising
+        Args:
+            x: list of objective vector
+            y: list of objective vector
+
+        Returns: Bool which says if x dominates y (x > y)
+
+        """
+
+        return np.count_nonzero(x >= y) == 0 and np.count_nonzero(x < y) > 0
+
+    def _statistical_test(self, s1: int, s2: int) -> float:
+        """
+        Performs a statistical test on the null hypothesis that algorithm 1 (s1) is equal
+        or worse that algorithm 2 (s2).
+        Args:
+            s1:
+            s2:
+
+        Returns:
+            p-value of the test. If this value is below the alpha value, then the
+            hypothesis is rejected and s1 is better than s2.
+        """
+        cache = self._get_cache()
+        dist = cache["distributions"]
+
+        #TODO dominance
+
+
+        #TODO handle non-numeric objectives
+        if isinstance(self.minimise, dict):
+            for i, obj in enumerate(cache["meta_data"]["objectives"]):
+                if self.minimise[obj] is False:
+                    dist[:, :, i] = -1 * dist[:, :, i]
+        elif self.minimise is False:
+            dist = -1*dist
+        #TODO how to handle uncomparable situations?
+        wins = [self._dominates(*p) for p in zip(dist[s2, :, :], dist[s1, :, :])]
+        wins = np.count_nonzero(wins)
+
+        p_value = wins / self.bootstrap_runs  # p-value
+
+        # p_value < self.alpha -> reject -> s1 is better performing than s2
+        # p_value >= self.alpha -> accept -> s1 is equal or worse performing than s2
+        return p_value
+
+    def get_ranking(self) -> pd.DataFrame:
+        """
+        Generates a robust ranking which groups statistically equal algorithm together.
+        Returns:
+            Dataframe with the algorithm as index and a columns with the rank (group) and a column with the mean
+            performance over all the bootstrap samples
+        """
+        cache = self._get_cache()
+        dist = copy.copy(cache["distributions"])
+        meta_data = cache["meta_data"]
+        n_algorithms = len(meta_data["algorithms"])
+
+        groups = {}
+        groupid = 0
+
+        replace = np.inf if self.minimise else -np.inf
+        argfunc = np.argmin if self.minimise else np.argmax
+
+        fractional_wins = np.zeros(n_algorithms, dtype=float)
+        algos, wins = np.unique(argfunc(dist, axis=0), return_counts=True)
+        fractional_wins[algos] = wins
+        fractional_wins = fractional_wins / self.bootstrap_runs
+
+        candidates_mask = np.ones(n_algorithms, dtype=bool)
+        while np.count_nonzero(candidates_mask) > 0:
+            # Find the winner amongst the remaining candidates
+            # Pick the algorithm that over all samples dominates the most algorithms
+
+            if np.count_nonzero(candidates_mask) > 1:
+                domination_count = np.zeros(np.count_nonzero(candidates_mask))
+                for sample in range(dist.shape[1]):
+                    _, dl, _, _ = fast_non_dominated_sorting(dist[candidates_mask, sample, :])
+                    domination_count += [len(d) for d in dl]
+                print(domination_count)
+                winner = np.argwhere(candidates_mask).flatten()[np.argmax(domination_count)]
+            else:
+                winner = np.argwhere(candidates_mask).flatten()[0]
+            print(f"{winner=}")
+
+            # distwins = argfunc(distributions, axis=0)
+            # algos, wins = np.unique(distwins, return_counts=True)
+            # winner = algos[np.argmax(wins)]
+
+            groups[groupid] = [(winner, np.mean(dist[winner, :]))]
+            candidates_mask[winner] = False  # Remove winner from candidates
+            # dist[winner, :, :] = replace #TODO handle mixed directions
+            if np.count_nonzero(candidates_mask) == 0:
+                break
+
+            # Perform statistical tests to find candidates that are statistically tied
+            candidates = np.argwhere(candidates_mask).flatten()
+            pvalues = np.zeros(len(candidates))
+            for i, candidate in enumerate(candidates):
+                pvalues[i] = self._statistical_test(winner,
+                                                    candidate)  # H0: winner <= candidate
+            # Multiple test correction
+            # TODO iterative method instead of cutoff method as described in paper. Paragraph is illogical
+            pvalues_order = np.argsort(pvalues)
+            # reject = pvalues < self.alpha  # no correction
+            # reject = multipletests(pvalues, self.alpha, method="holm")[0]  # hommel
+
+            # TODO iterative method instead of cutoff method as described in paper. Paragraph is illogical
+            # Holm-Bonferroni
+            reject = np.zeros(len(candidates),
+                              dtype=bool)  # Do not reject any test by default
+            for i, index in enumerate(pvalues_order):
+                corrected_alpha = self.alpha / (len(candidates) - i)  # Holm-Bonferroni
+                if pvalues[index] < corrected_alpha:
+                    # Reject H0 -> winner > candidate
+                    reject[index] = True
+                else:
+                    break
+
+            # Not rejecting means they are statistically tied
+            ties = candidates[~reject]
+            for candidate in ties:
+                groups[groupid].append((candidate, 0))
+                candidates_mask[candidate] = False
+                dist[candidate, :] = replace
+
+            groupid += 1
+
+        results = []
+        for group, algorithms in groups.items():
+            for (algorithm, performance) in algorithms:
+                results.append({"algorithm": meta_data["algorithms"][algorithm],
+                                "group": group + 1,
+                                "ranked 1st": fractional_wins[algorithm], })
+
+        df = pd.DataFrame(results).set_index("algorithm").sort_values(
+            ["group", "ranked 1st"], ascending=[True, False])
+        df["remaining"] = (1 - df["ranked 1st"].cumsum()).round(4)
+
+        return df
+
 class SubSetComparison(BootstrapComparison):
     def __init__(self,
                  *args,
                  subset_size: int = 2,
-                 **kwargs,):
+                 **kwargs, ):
         """
 
         Args:
@@ -429,7 +624,8 @@ class SubSetComparison(BootstrapComparison):
         self.subset_size = subset_size
 
     def _get_samples(self, array: np.ndarray, meta_data: dict) -> np.ndarray:
-        subsets = list(itertools.combinations(range(len(meta_data["instances"])), r=self.subset_size))
+        subsets = list(itertools.combinations(range(len(meta_data["instances"])),
+                                              r=self.subset_size))
         self.bootstrap_runs = len(subsets)
         print(f"{self.bootstrap_runs} Samples")
         bootstraps = np.zeros(
