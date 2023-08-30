@@ -177,7 +177,7 @@ class BootstrapComparison(AbstractAlgorithmComparison):
         else:
             self.rng = rng
 
-    def _get_samples(self, num_instances: int, bootstrap_runs: int = None) -> np.ndarray:
+    def _get_samples(self, num_instances: int, bootstrap_runs: int | None = None) -> np.ndarray:
         """
         Generates the samples
         Args:
@@ -188,6 +188,9 @@ class BootstrapComparison(AbstractAlgorithmComparison):
 
         """
         bootstrap_runs = self.bootstrap_runs if bootstrap_runs is None else bootstrap_runs
+
+        # TODO add check to see if there is a sufficient chance of obtaining unique samples.
+        #   With a small number of instances this can happen.
 
         return self.rng.choice(np.arange(0, num_instances),
                                size=(num_instances, bootstrap_runs),
@@ -243,6 +246,7 @@ class BootstrapComparison(AbstractAlgorithmComparison):
 
         # Generate n bootstrap samples from the instances
         bootstraps = self._get_samples(len(meta_data["instances"]))
+        print(f"{bootstraps.shape=}")
 
         # Compute the performance of the algorithm on each bootstrap sample
         distributions = np.zeros((len(meta_data["algorithms"]),
@@ -295,10 +299,12 @@ class BootstrapComparison(AbstractAlgorithmComparison):
 
         candidates_mask = np.ones(n_algorithms, dtype=bool)
         while np.count_nonzero(candidates_mask) > 0:
+            print(f"Round {groupid}")
             # Find the winner amongst the remaining candidates
             distwins = argfunc(distributions, axis=0)
             algos, wins = np.unique(distwins, return_counts=True)
             winner = algos[np.argmax(wins)]
+            print(f"> {meta_data['algorithms'][winner]} has with {np.max(wins)/self.bootstrap_runs:.3%} the most wins out of all {np.count_nonzero(candidates_mask)} candidates.")
             groups[groupid] = [(winner, np.mean(distributions[winner, :]))]
             candidates_mask[winner] = False  # Remove winner from candidates
             distributions[winner, :] = replace
@@ -311,9 +317,11 @@ class BootstrapComparison(AbstractAlgorithmComparison):
             for i, candidate in enumerate(candidates):
                 pvalues[i] = self._statistical_test(winner,
                                                     candidate)  # H0: winner <= candidate
+                print(f"\t> {meta_data['algorithms'][winner]} loses from {meta_data['algorithms'][candidate]} {pvalues[i]:.3%} times.")
             # Multiple test correction
             # TODO iterative method instead of cutoff method as described in paper. Paragraph is illogical
             pvalues_order = np.argsort(pvalues)
+            # print(f"Round: p-values {pvalues}")
             # reject = pvalues < self.alpha  # no correction
             # reject = multipletests(pvalues, self.alpha, method="holm")[0]  # hommel
 
@@ -332,6 +340,7 @@ class BootstrapComparison(AbstractAlgorithmComparison):
             # Not rejecting means they are statistically tied
             ties = candidates[~reject]
             for candidate in ties:
+                print(f"\t> {meta_data['algorithms'][candidate]} is with tied with the winner.")
                 groups[groupid].append((candidate, 0))
                 candidates_mask[candidate] = False
                 distributions[candidate, :] = replace
@@ -340,10 +349,20 @@ class BootstrapComparison(AbstractAlgorithmComparison):
 
         results = []
         for group, algorithms in groups.items():
+            # group wins
+            dist = copy.copy(cache["distributions"])
+            group_wins = np.zeros(len(algorithms), dtype=float)
+            print([a[0] for a in algorithms])
+            algos, wins = np.unique(argfunc(dist[[a[0] for a in algorithms], :], axis=0), return_counts=True)
+            group_wins[algos] = wins
+            group_wins = group_wins / self.bootstrap_runs
+            algmap = {a: i for i, a in enumerate([a[0] for a in algorithms])}
+
             for (algorithm, performance) in algorithms:
                 results.append({"algorithm": meta_data["algorithms"][algorithm],
                                 "group": group + 1,
-                                "ranked 1st": fractional_wins[algorithm], })
+                                "ranked 1st": fractional_wins[algorithm],
+                                "group wins": group_wins[algmap[algorithm]]})
 
         df = pd.DataFrame(results).set_index("algorithm").sort_values(
             ["group", "ranked 1st"], ascending=[True, False])
@@ -351,7 +370,22 @@ class BootstrapComparison(AbstractAlgorithmComparison):
 
         return df
 
-    def get_confidence_intervals(self) -> pd.DataFrame:
+    def get_comparison_table(self) -> pd.DataFrame:
+        cache = self._get_cache()
+        meta_data = cache["meta_data"]
+        n_algorithms = len(meta_data["algorithms"])
+
+        rows = []
+        for s1, s2 in itertools.product(range(n_algorithms), repeat=2):
+            rows.append({
+                "s1": meta_data["algorithms"][s1],
+                "s2": meta_data["algorithms"][s2],
+                "wins": self._statistical_test(s1,s2)*self.bootstrap_runs
+            })
+
+        return pd.DataFrame(rows).set_index(["s1", "s2"]).unstack("s2")
+
+    def get_confidence_intervals(self, alpha: None | float= None) -> pd.DataFrame:
         """
         Computes the upper and lower bounds of the 1-alpha confidence interval.
         Returns:
@@ -361,18 +395,21 @@ class BootstrapComparison(AbstractAlgorithmComparison):
         distributions = cache["distributions"]
         meta_data = cache["meta_data"]
 
-        lower_bound = self.alpha / 2
+        alpha = self.alpha if alpha is None else alpha
+        lower_bound = alpha / 2
         median = 0.5
-        upper_bound = 1 - (self.alpha / 2)
+        upper_bound = 1 - (alpha / 2)
 
-        confidence_bounds = np.quantile(distributions,
-                                        (median, lower_bound, upper_bound), axis=1)
+        confidence_bounds = np.quantile(distributions,(median, lower_bound, upper_bound), axis=1)
+        alldf = []
+        for obj_id, obj in enumerate(meta_data["objectives"]):
+            df = pd.DataFrame(confidence_bounds[:,:,obj_id].T, columns=["median", "lb", "ub"])
+            df["objective"] = obj
+            df["algorithm"] = meta_data["algorithms"]
+            df = df.set_index(["algorithm","objective"])
+            alldf.append(df)
 
-        df = pd.DataFrame(confidence_bounds.T, columns=["median", "lb", "ub"])
-        df["algorithm"] = meta_data["algorithms"]
-        df = df.set_index("algorithm")
-
-        return df
+        return  pd.concat(alldf)
 
     def get_bootstrap_distribution(self, algorithm: str):
         cache = self._get_cache()
@@ -593,10 +630,18 @@ class MOBootstrapComparison(BootstrapComparison):
 
         results = []
         for group, algorithms in groups.items():
+            #group wins
+            group_wins = np.zeros(len(algorithms), dtype=float)
+            algos, wins = np.unique(argfunc(dist[algorithms, :], axis=0), return_counts=True)
+            group_wins[algos] = wins
+            group_wins = group_wins / self.bootstrap_runs
+            algmap = {a: i for i, a in enumerate(algorithms)}
+
             for (algorithm, performance) in algorithms:
                 results.append({"algorithm": meta_data["algorithms"][algorithm],
                                 "group": group + 1,
-                                "ranked 1st": fractional_wins[algorithm], })
+                                "ranked 1st": fractional_wins[algorithm],
+                                "group wins": group_wins[algmap[algorithm]]})
 
         df = pd.DataFrame(results).set_index("algorithm").sort_values(
             ["group", "ranked 1st"], ascending=[True, False])
@@ -636,4 +681,15 @@ class SubSetComparison(BootstrapComparison):
         indices = np.arange(0, len(meta_data["instances"]))
         for i, subset in enumerate(subsets):
             bootstraps[:, i] = np.setdiff1d(indices, subset)
+        return bootstraps
+
+class AllPermutationsComparison(BootstrapComparison):
+
+    def _get_samples(self, num_instances: int, bootstrap_runs: int | None = None) -> np.ndarray:
+        permutations = list(itertools.product(range(num_instances),
+                                              repeat=num_instances))
+        self.bootstrap_runs = len(permutations)
+        print(f"{self.bootstrap_runs} Samples")
+
+        bootstraps = np.array(permutations,dtype=int).T
         return bootstraps

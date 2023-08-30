@@ -231,7 +231,7 @@ class Benchmark(ABC):
             self._instance2index[instance].add(index)
             self._objective2index[objective].add(index)
 
-    # Group imports
+    # Imports
     def from_pandas(self, df, algorithm_key: [str | tuple], instance_key: [str | tuple], objective_keys: [str | tuple | list]):
         """
         Generate the class from a pandas DataFrame. Each key component should be a column as well as the value key.
