@@ -57,8 +57,8 @@ class BootstrapComparison(AbstractAlgorithmComparison):
         bootstrap_runs = self.bootstrap_runs if bootstrap_runs is None else bootstrap_runs
 
         if binom(2*num_instances, num_instances) <= bootstrap_runs:
-            warnings.warn(f"There are only {binom(2*num_instances, num_instances):0.f} unique samples possible,  "
-                          f"which is less than the requested {bootstrap_runs} bootstrap samples. Duplicate samples are"
+            warnings.warn(f"There are only {binom(2*num_instances, num_instances):.0f} unique samples possible,  "
+                          f"which is less than the requested {bootstrap_runs} bootstrap samples. Duplicate samples are "
                           f"inevitable. "
                           f"Consider increasing the number of instances or reducing the number of bootstraps.")
 
@@ -128,7 +128,6 @@ class BootstrapComparison(AbstractAlgorithmComparison):
 
         # Generate n bootstrap samples from the instances
         bootstraps = self._get_samples(len(meta_data["instances"]))
-        print(f"{bootstraps.shape=}")
 
         # Compute the performance of the algorithm on each bootstrap sample
         distributions = np.zeros((len(meta_data["algorithms"]),
@@ -140,7 +139,6 @@ class BootstrapComparison(AbstractAlgorithmComparison):
             samples = np.take(performance, bootstraps)
             # Compute aggregated performance
             agg_method = self.aggregation_method
-
             if isinstance(self.aggregation_method, dict):
                 agg_method = self.aggregation_method[meta_data["objectives"][obj]]
 
@@ -171,8 +169,15 @@ class BootstrapComparison(AbstractAlgorithmComparison):
         groups = {}
         groupid = 0
 
-        replace = np.inf if self.minimise else -np.inf
-        argfunc = np.argmin if self.minimise else np.argmax
+        # Always minimise
+        if len(meta_data["objectives"]) > 1 and isinstance(self.minimise, dict):
+            for oid, o in enumerate(meta_data["objectives"]):
+                distributions[:, :, oid] *= 1 if self.minimise[o] else -1 # flip
+        elif not self.minimise:
+            distributions *= -1  # flip
+
+        replace = np.inf  # if self.minimise else -np.inf
+        argfunc = np.argmin  # if self.minimise else np.argmax
 
         fractional_wins = np.zeros(n_algorithms, dtype=float)
         algos, wins = np.unique(argfunc(distributions, axis=0), return_counts=True)

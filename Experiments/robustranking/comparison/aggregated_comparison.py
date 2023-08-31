@@ -46,7 +46,7 @@ class AggregatedComparison(AbstractAlgorithmComparison):
         meta_data = cache["meta_data"]
 
         aggregation = cache["aggregation"]
-        if len(meta_data["objectives"]) > 1 and isinstance(self.aggregation_method,
+        if len(meta_data["objectives"]) > 1 and isinstance(self.minimise,
                                                            dict):
             direction = [1 if self.minimise[o] else -1 for o in meta_data["objectives"]]
         else:
