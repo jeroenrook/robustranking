@@ -262,6 +262,8 @@ class Benchmark(ABC):
             for objective_key in objective_keys:
                 self.add_run(row[algorithm_key], row[instance_key], objective_key, row[objective_key])
 
+        return self
+
     # Exports
     def to_pandas(self, *args, **kwargs) -> pd.DataFrame:
         """

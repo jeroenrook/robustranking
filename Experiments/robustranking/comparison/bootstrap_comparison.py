@@ -44,6 +44,9 @@ class BootstrapComparison(AbstractAlgorithmComparison):
         else:
             self.rng = rng
 
+        self._lock_dist = False
+        self._dist_cache = None
+
     def _get_samples(self, num_instances: int, bootstrap_runs: int | None = None) -> np.ndarray:
         """
         Generates the samples
@@ -79,13 +82,12 @@ class BootstrapComparison(AbstractAlgorithmComparison):
             p-value of the test. If this value is below the alpha value, then the
             hypothesis is rejected and s1 is better than s2.
         """
-        cache = self._get_cache()
-        distributions = cache["distributions"]
+        distributions = self._get_distributions(always_minimise=True)
 
-        if self.minimise:
-            wins = np.count_nonzero(distributions[s1, :] >= distributions[s2, :])
-        else:
-            wins = np.count_nonzero(distributions[s1, :] <= distributions[s2, :])
+        # if self.minimise:
+        wins = np.count_nonzero(distributions[s1, :] >= distributions[s2, :])
+        # else:
+        # wins = np.count_nonzero(distributions[s1, :] <= distributions[s2, :])
 
         p_value = wins / self.bootstrap_runs  # p-value
 
@@ -154,6 +156,36 @@ class BootstrapComparison(AbstractAlgorithmComparison):
 
         return self
 
+    def _unlock_distribution(self):
+        self._lock_dist = False
+        self._dist_cache = None
+
+    def _get_distributions(self, always_minimise=True, lock=False, **kwargs) -> np.ndarray:
+        #TODO check of lock request while still lock -> yield error/warning
+        if self._lock_dist:
+            return self._dist_cache
+
+        cache = self._get_cache()
+        meta_data = cache["meta_data"]
+        distributions = np.copy(cache["distributions"])
+
+        if always_minimise:
+            # Always minimise
+            if len(meta_data["objectives"]) > 1 and isinstance(self.minimise, dict):
+                for oid, o in enumerate(meta_data["objectives"]):
+                    logging.debug("flip obj")
+                    distributions[:, :, oid] *= 1 if self.minimise[o] else -1  # flip
+            elif not self.minimise:
+                logging.debug("flip all")
+                distributions *= -1  # flip
+
+        if lock:
+            self._lock_dist = True
+            self._dist_cache = np.copy(distributions)
+
+        return distributions
+
+
     def get_ranking(self) -> pd.DataFrame:
         """
         Generates a robust ranking which groups statistically equal algorithm together.
@@ -162,19 +194,12 @@ class BootstrapComparison(AbstractAlgorithmComparison):
             performance over all the bootstrap samples
         """
         cache = self._get_cache()
-        distributions = copy.copy(cache["distributions"])
+        distributions = self._get_distributions(always_minimise=True, lock=True)
         meta_data = cache["meta_data"]
         n_algorithms = len(meta_data["algorithms"])
 
         groups = {}
         groupid = 0
-
-        # Always minimise
-        if len(meta_data["objectives"]) > 1 and isinstance(self.minimise, dict):
-            for oid, o in enumerate(meta_data["objectives"]):
-                distributions[:, :, oid] *= 1 if self.minimise[o] else -1 # flip
-        elif not self.minimise:
-            distributions *= -1  # flip
 
         replace = np.inf  # if self.minimise else -np.inf
         argfunc = np.argmin  # if self.minimise else np.argmax
@@ -188,13 +213,23 @@ class BootstrapComparison(AbstractAlgorithmComparison):
         while np.count_nonzero(candidates_mask) > 0:
             logging.info(f"Round {groupid}")
             # Find the winner amongst the remaining candidates
-            distwins = argfunc(distributions, axis=0)
+            active_candidates = np.argwhere(candidates_mask).flatten()
+            distwins = np.argmin(distributions[candidates_mask, :], axis=0)
             algos, wins = np.unique(distwins, return_counts=True)
-            winner = algos[np.argmax(wins)]
+
+            most_wins = np.max(wins)
+            winners = np.where(wins == most_wins)[0]
+            winner = active_candidates[algos[np.random.choice(winners)]]
+
+            # distwins = np.argmin(distributions, axis=0)
+            # algos, wins = np.unique(distwins, return_counts=True)
+            # winner = algos[np.argmax(wins)]
+
+
             logging.info(f"> {meta_data['algorithms'][winner]} has with {np.max(wins)/self.bootstrap_runs:.3%} the most wins out of all {np.count_nonzero(candidates_mask)} candidates.")
             groups[groupid] = [(winner, np.mean(distributions[winner, :]))]
             candidates_mask[winner] = False  # Remove winner from candidates
-            distributions[winner, :] = replace
+            # distributions[winner, :] = replace
             if np.count_nonzero(candidates_mask) == 0:
                 break
 
@@ -203,7 +238,7 @@ class BootstrapComparison(AbstractAlgorithmComparison):
             pvalues = np.zeros(len(candidates))
             for i, candidate in enumerate(candidates):
                 pvalues[i] = self._statistical_test(winner,
-                                                    candidate)  # H0: winner <= candidate
+                                                    candidate)  # H0: winner >= candidate: winner is worse or equal than candidate
                 logging.info(f"\t> {meta_data['algorithms'][winner]} loses from {meta_data['algorithms'][candidate]} {pvalues[i]:.3%} times.")
             # Multiple test correction
             # TODO iterative method instead of cutoff method as described in paper. Paragraph is illogical
@@ -249,11 +284,18 @@ class BootstrapComparison(AbstractAlgorithmComparison):
                 results.append({"algorithm": meta_data["algorithms"][algorithm],
                                 "group": group + 1,
                                 "ranked 1st": fractional_wins[algorithm],
-                                "group wins": group_wins[algmap[algorithm]]})
+                                "group wins": group_wins[algmap[algorithm]],
+                                "ci_mean": np.mean(dist[algorithm, :]),
+                                "ci_median": np.median(dist[algorithm, :]),
+                                "ci_lb": np.quantile(dist[algorithm, :], self.alpha/2),
+                                "ci_ub": np.quantile(dist[algorithm, :], 1-self.alpha/2),
+                                })
 
         df = pd.DataFrame(results).set_index("algorithm").sort_values(
             ["group", "ranked 1st"], ascending=[True, False])
         df["remaining"] = (1 - df["ranked 1st"].cumsum()).round(4)
+
+        self._unlock_distribution()
 
         return df
 
@@ -277,14 +319,14 @@ class BootstrapComparison(AbstractAlgorithmComparison):
 
         return pd.DataFrame(rows).set_index(["s1", "s2"]).unstack("s2")
 
-    def get_confidence_intervals(self, alpha: None | float= None) -> pd.DataFrame:
+    def get_confidence_intervals(self, alpha: None | float = None) -> pd.DataFrame:
         """
         Computes the upper and lower bounds of the 1-alpha confidence interval.
         Returns:
             A pandas DataFrame with the bounds and the mean performance
         """
         cache = self._get_cache()
-        distributions = cache["distributions"]
+        distributions = self._get_distributions(always_minimise=False)
         meta_data = cache["meta_data"]
 
         alpha = self.alpha if alpha is None else alpha
@@ -296,9 +338,12 @@ class BootstrapComparison(AbstractAlgorithmComparison):
         alldf = []
         for obj_id, obj in enumerate(meta_data["objectives"]):
             df = pd.DataFrame(confidence_bounds[:, :, obj_id].T, columns=["median", "lb", "ub"])
-            df["objective"] = obj
             df["algorithm"] = meta_data["algorithms"]
-            df = df.set_index(["algorithm","objective"])
+            # if len(meta_data["objectives"]) > 1:
+            df["objective"] = obj
+            df = df.set_index(["algorithm", "objective"])
+            # else:
+            #     df = df.set_index(["algorithm"])
             alldf.append(df)
 
         return pd.concat(alldf)

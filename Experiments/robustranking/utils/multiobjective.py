@@ -18,6 +18,9 @@ def dominates(x, y):
     """
     return np.count_nonzero(x > y) == 0 and np.count_nonzero(x < y) > 0
 
+def incomparable(x, y):
+    return not (dominates(x, y) or dominates(y, x))
+
 def fast_non_dominated_sorting(points):
     """
     Taken from NSGA-II paper

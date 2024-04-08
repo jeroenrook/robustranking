@@ -1,3 +1,4 @@
-from robustranking.comparison.aggregated_comparison import AggregatedComparison
-from robustranking.comparison.bootstrap_comparison import BootstrapComparison
-from robustranking.comparison.mo_bootstrap_comparison import MOBootstrapComparison
+from .aggregated_comparison import AggregatedComparison
+from .bootstrap_comparison import BootstrapComparison
+from .mo_bootstrap_comparison import MOBootstrapComparison
+from .mo_domination_bootstrap_comparison import MODominationBootstrapComparison
