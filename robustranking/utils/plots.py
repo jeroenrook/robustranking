@@ -187,8 +187,10 @@ def plot_ci_list(comparison: BootstrapComparison | MODominationBootstrapComparis
 def plot_ci_density_estimations(
         comparison: MOBootstrapComparison,
         algorithms: list | str = None,
-        show_names: bool = False,
-        max_samples: int = 1000,
+        show_names: bool | dict = False,
+        show_kde: bool = True,
+        show_contours: bool = True,
+        max_samples: float = 1000,
         ax=None):
     show = False
     if ax is None:
@@ -236,18 +238,25 @@ def plot_ci_density_estimations(
         ]
         cmap1 = LinearSegmentedColormap.from_list("alpha", colors, N=256)
 
-        ax.pcolormesh(xi, yi, zi.reshape(xi.shape), shading="auto", cmap=cmap1, zorder=1, norm=LogNorm(vmin=0.01),
-                       alpha=0.66)
-        levels = [0.05, 0.25, 0.5]  # 95% and 75%, 50% ci
-        ax.contour(xi, yi, zi.reshape(xi.shape),
-                    levels=levels,
-                    colors=len(levels) * [end_colors[cid % len(end_colors)]],
-                    zorder=2,
-                    alpha=0.5)
+        if show_kde:
+            ax.pcolormesh(xi, yi, zi.reshape(xi.shape),
+                          shading="auto",
+                          cmap=cmap1,
+                          zorder=1,
+                          norm=LogNorm(vmin=0.01),
+                          alpha=0.66,
+                          rasterized=True)
+        if show_contours:
+            levels = [0.05, 0.25, 0.5]  # 95% and 75%, 50% ci
+            ax.contour(xi, yi, zi.reshape(xi.shape),
+                        levels=levels,
+                        colors=len(levels) * [end_colors[cid % len(end_colors)]],
+                        zorder=2,
+                        alpha=0.5)
         if isinstance(show_names, dict):
-            plt.text(np.mean(x), np.mean(y), f"{show_names[algname]}", zorder=30, ha="left", va="bottom", c="black")
-        if show_names:
-            plt.text(np.mean(x), np.mean(y), f"{algname}", zorder=30, ha="left", va="bottom", c="black")
+            plt.text(np.mean(x), np.mean(y), f"{show_names[algname]}", zorder=30, ha="center", va="bottom", c="black")
+        elif show_names:
+            plt.text(np.mean(x), np.mean(y), f"{algname}", zorder=30, ha="center", va="bottom", c="black")
 
     # for s1, s2 in itertools.product(algorithms, repeat=2):
     #     print(f"H0: {s1:24} is dominated by or incomparable {s2:24}: p-value={comparison.statistical_test(s1, s2)}")

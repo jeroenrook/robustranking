@@ -1,6 +1,6 @@
 # Robust Ranking
 
-A Python package for robust ranking
+A Python package for robust ranking. 
 
 ## Installation
 
