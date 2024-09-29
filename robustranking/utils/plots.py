@@ -1,4 +1,7 @@
 import itertools
+import logging
+from typing import Sequence
+
 from scipy.stats import gaussian_kde
 
 import matplotlib
@@ -8,6 +11,7 @@ import matplotlib.patches as patches
 import numpy as np
 
 from robustranking.comparison import BootstrapComparison, MOBootstrapComparison, MODominationBootstrapComparison
+from robustranking.comparison.abstract_comparison import AbstractAlgorithmComparison
 
 
 # Bootstrap related plots
@@ -270,3 +274,84 @@ def plot_ci_density_estimations(
         plt.tight_layout()
         plt.show()
 
+def plot_line_ranks(
+        comparisons: dict[str, AbstractAlgorithmComparison],
+        objective: str = None,
+        line_color: [tuple[int, int, int, int] | str] = (0, 0, 0, 0.5),
+        ax=None,
+):
+    show = False
+    if ax is None:
+        show = True
+        fig, ax = plt.subplots(figsize=(8, 8))
+
+    # TODO: Check is algorithms are consistent across comparisons
+    width, height = ax.figure.get_size_inches()
+
+    lines = dict()
+
+    for compid, (compname, comparison) in enumerate(comparisons.items()):
+        logging.debug(f"{compid:2}: {compname}")
+
+        cache = comparison._get_cache()
+        meta_data = cache["meta_data"]
+        if objective is None:
+            if len(meta_data["objectives"]) > 1:
+                print(f"Please select an objective to make the list for: {meta_data['objectives']}")
+                return
+            objective = meta_data["objectives"][0]
+
+        ranking = comparison.get_ranking()
+        n_algorithms = len(ranking)
+
+        if compid == 0:
+            ax.set_yticks(list(range(1, 1+n_algorithms)))
+            ax.set_yticklabels(list(ranking.index)[::-1])
+
+        # Points
+        ax.scatter(np.ones(n_algorithms)*compid, n_algorithms-np.arange(n_algorithms), zorder=1000, c="blue")
+
+        # Line administration
+        for i, algname in enumerate(ranking.index):
+            if algname not in lines:
+                lines[algname] = list()
+            lines[algname].append((compid, n_algorithms-i))
+
+        # Group rectangles
+        if "group" in ranking.columns:
+            groups = ranking.groupby("group").size().sort_index()
+            logging.debug(f"{groups=}")
+            offset = n_algorithms
+            for _, groupsize in groups.items():
+                bar = patches.FancyBboxPatch(
+                        (compid-0.05, offset+0.4),
+                        0.1,
+                        -(groupsize-.2),
+                        facecolor=(0, 0, 0, 0.2),
+                        boxstyle="Round4, pad=0, rounding_size=0.025",
+                        # linestyle="--",
+                        edgecolor="black",
+                        # label="{:.2f}% CI".format(1 - comparison.alpha),
+                        zorder=-1000,
+                    )
+                if groupsize > 0:
+                    p = ax.add_patch(bar)
+                offset = offset - groupsize
+
+    for algname, line in lines.items():
+        line = np.array(line)
+        ax.plot(*line.T, c=line_color)
+        #entries
+        ax.plot((line[0, 0], line[0, 0]-0.1), (line[0, 1], line[0, 1]), c=line_color)
+        ax.plot((line[-1, 0], line[-1, 0]+0.1), (line[-1, 1], line[-1, 1]), c=line_color)
+
+
+    ax.set_xticks(list(range(len(comparisons))))
+    ax.set_xticklabels(comparisons.keys())
+
+    for side in ["left", "right","top", "bottom"]:
+        ax.spines[side].set_visible(False)
+
+    if show:
+        plt.tight_layout()
+        plt.show()

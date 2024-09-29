@@ -292,7 +292,7 @@ class BootstrapComparison(AbstractAlgorithmComparison):
                                 })
 
         df = pd.DataFrame(results).set_index("algorithm").sort_values(
-            ["group", "ranked 1st"], ascending=[True, False])
+            ["group", "ranked 1st", "ci_mean"], ascending=[True, False, self.minimise])
         df["remaining"] = (1 - df["ranked 1st"].cumsum()).round(4)
 
         self._unlock_distribution()
