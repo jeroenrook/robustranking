@@ -1,25 +1,21 @@
 repos:
-  - repo: https://github.com/pycqa/isort
-    rev: 5.13.2
-    hooks:
-      - id: isort
-  - repo: local
+#  - repo: https://github.com/pycqa/isort
+#    rev: 5.13.2
+#    hooks:
+#      - id: isort
+  - repo: https://github.com/google/yapf
+    rev: v0.40.2
     hooks:
       - id: yapf
-        name: yapf
-        language: python
-        entry: yapf
-        args: [ -i ]
-        types: [ python ]
   - repo: https://github.com/pycqa/flake8
-    rev: 7.0.0
+    rev: 7.1.1
     hooks:
       - id: flake8
-  - repo: local
-    hooks:
-      - id: pylint
-        name: pylint
-        entry: pylint
-        language: system
-        types: [ python ]
-        require_serial: true
+#  - repo: local
+#    hooks:
+#      - id: pylint
+#        name: pylint
+#        entry: pylint
+#        language: system
+#        types: [ python ]
+#        require_serial: true

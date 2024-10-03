@@ -7,7 +7,6 @@ import numpy as np
 import pandas as pd
 
 from robustranking.benchmark import Benchmark
-# Local imports
 from robustranking.comparison.bootstrap_comparison import BootstrapComparison
 from robustranking.utils.multiobjective import (dominates, fast_non_dominated_sorting)
 

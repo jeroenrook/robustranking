@@ -1,6 +1,12 @@
 [flake8]
 max-line-length = 120
-exclude=Documents,examples,scripts,_*.py
+exclude=
+    .git,
+    __pycache__,
+    _*.py
+    Documents/,
+    examples/,
+    scripts/*.py,
 extend-ignore =
     #D100: Missing docstring in public function
     D100,
