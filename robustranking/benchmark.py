@@ -1,8 +1,9 @@
-from abc import ABC
 import itertools
-from typing_extensions import Self
-import pandas as pd
+from abc import ABC
+
 import numpy as np
+import pandas as pd
+from typing_extensions import Self
 
 
 class Benchmark(ABC):
@@ -14,6 +15,7 @@ class Benchmark(ABC):
 
     def __init__(self, algorithms: list = None, instances: list = None, objectives: list = None):
         """
+        Initialize the Benchmark class.
 
         Args:
             algorithms: list of algorithm names
@@ -43,11 +45,7 @@ class Benchmark(ABC):
 
     # Functional
     def reset(self):
-        """
-        Reset the benchmark data structure
-        Returns: None
-
-        """
+        """Reset the benchmark data structure."""
         self.algorithms = []
         self.instances = []
         self.objectives = []
@@ -61,7 +59,8 @@ class Benchmark(ABC):
 
     def check_complete(self) -> bool:
         """
-        Checks if for all possible (algorithm, instance, objective) combination there is a value
+        Checks if for all possible (algorithm, instance, objective) combination there is a value.
+
         Returns: bool:
         """
         for a, i, o in itertools.product(self.algorithms, self.instances, self.objectives):
@@ -70,6 +69,7 @@ class Benchmark(ABC):
         return True
 
     def show_stats(self) -> pd.Series:
+        """Create statistics and return it as a pd.Series."""
         stats = {
             "algorithms": len(self.algorithms),
             "instances": len(self.instances),
@@ -82,6 +82,7 @@ class Benchmark(ABC):
     def filter(self, *args, **kwargs) -> Self:
         """
         Creates a new benchmark class where the contents are filtered based on the given arguments.
+
         Args:
             *args: passed along to self.get
             **kwargs: passed along to self.get
@@ -102,7 +103,9 @@ class Benchmark(ABC):
                      objectives: [list, str] = None) -> set:
         """
         Retrieves the indices of all the values of all combinations of the items in the provided dimensions.
-        When there is no filter on one dimension then it considers all available items in that dimension
+
+        When there is no filter on one dimension then it considers all available items in that dimension.
+
         Args:
             algorithms:
             instances:
@@ -144,7 +147,9 @@ class Benchmark(ABC):
     def get(self, algorithms=None, instances=None, objectives=None) -> dict:
         """
         Retrieves all the keys and values of all combinations of the items in the provided dimensions.
-        When there is no filter on one dimension then it considers all available items in that dimension
+
+        When there is no filter on one dimension then it considers all available items in that dimension.
+
         Args:
             algorithms:
             instances:
@@ -163,7 +168,8 @@ class Benchmark(ABC):
     # Add
     def add_algorithm(self, name):
         """
-        Add an algorithm
+        Add an algorithm.
+
         Args:
             name:
         """
@@ -173,38 +179,38 @@ class Benchmark(ABC):
 
     def add_instance(self, name):
         """
-        Add an instance
+        Add an instance.
+
         Args:
             name:
         """
-        #assert name not in self.instances, "Instance already exists"
+        # assert name not in self.instances, "Instance already exists"
         if name not in self.instances:
             self.instances.append(name)
             self._instance2index[name] = set()
 
     def add_objective(self, name):
         """
-        Add an instance
+        Add an objective.
+
         Args:
             name:
         """
-        #assert name not in self.objectives, "Objective already exists"
+        # assert name not in self.objectives, "Objective already exists"
         if name not in self.objectives:
             self.objectives.append(name)
             self._objective2index[name] = set()
 
     def add_run(self, algorithm, instance, objective, value, replace=True):
         """
-        Adds a value for the provided key
+        Adds a value for the provided key.
+
         Args:
             algorithm:
             instance:
             objective:
             value: data point
             replace: bool: Whether to replace a value when there already exists one for the given key
-
-        Returns:
-
         """
         if algorithm not in self.algorithms:
             self.add_algorithm(algorithm)
@@ -213,14 +219,14 @@ class Benchmark(ABC):
         if objective not in self.objectives:
             self.add_objective(objective)
 
-        #Prevent duplicates
+        # Prevent duplicates
         indices = self._get_indices(algorithm, instance, objective)
         if len(indices) == 1:
             if replace:
                 index = indices.pop()
                 self._run_data[index] = value
             else:
-                #warnings.WarningMessage("Entry already in table. Ignoring this entry")
+                # warnings.WarningMessage("Entry already in table. Ignoring this entry")
                 print("Entry already in table. Ignoring this entry")
         else:
             index = len(self._run_data)
@@ -232,9 +238,12 @@ class Benchmark(ABC):
             self._objective2index[objective].add(index)
 
     # Imports
-    def from_pandas(self, df, algorithm_key: [str | tuple], instance_key: [str | tuple], objective_keys: [str | tuple | list]):
+    def from_pandas(self, df, algorithm_key: [str | tuple], instance_key: [str | tuple],
+                    objective_keys: [str | tuple | list]):
         """
-        Generate the class from a pandas DataFrame. Each key component should be a column as well as the value key.
+        Generate the class from a pandas DataFrame.
+
+        Each key component should be a column as well as the value key.
         Other columns are ignored.
 
         Args:
@@ -243,9 +252,6 @@ class Benchmark(ABC):
             instance_key:
             objective_key:
             value_key:
-
-        Returns:
-
         """
         self.reset()
 
@@ -267,43 +273,42 @@ class Benchmark(ABC):
     # Exports
     def to_pandas(self, *args, **kwargs) -> pd.DataFrame:
         """
-        Creates a pandas DataFrame out of the benchmark class. The keys are set as index which makes stacking and
-        unstacking easy to do.
+        Creates a pandas DataFrame out of the benchmark class.
+
+        The keys are set as index which makes stacking and unstacking easy to do.
 
         Passing along filters on the key elements is possible.
         Args:
             *args:
             **kwargs:
 
-        Returns:
-
+        Returns: Dataframe
         """
         items = []
         for k, v in self.get(*args, **kwargs).items():
-            item = {
-                "algorithm": k[0],
-                "instance": k[1],
-                "objective": k[2],
-                "value": v
-            }
+            item = {"algorithm": k[0], "instance": k[1], "objective": k[2], "value": v}
             items.append(item)
         return pd.DataFrame(items).set_index(["algorithm", "instance", "objective"])
 
     def to_numpy(self, algorithms=None, instances=None, objectives=None) -> tuple[np.ndarray, dict]:
         """
-        Create a 3-dimensional numpy array. The dimensions represent the algorithms, instances and objectives,
-         respectively. Along with the array, meta-data provided with which algorithms, instance and objective each cell
+        Create a 3-dimensional numpy array.
+
+        The dimensions represent the algorithms, instances and objectives, respectively.
+        Along with the array, meta-data provided with which algorithms, instance and objective each cell
          represents. Empty cells are filled with np.nan
 
          Passing along filters on the key elements is possible.
+
         Args:
             algorithms:
             instances:
             objectives:
 
         Returns:
-
+            numpy.ndarray, metadata
         """
+
         def parse_item(items, parent):
             if items is None:
                 items = parent
@@ -317,7 +322,11 @@ class Benchmark(ABC):
 
         results = self.get(algorithms=None, instances=None, objectives=None)
 
-        shape = (len(algorithms), len(instances), len(objectives), )
+        shape = (
+            len(algorithms),
+            len(instances),
+            len(objectives),
+        )
         array = np.zeros(shape)
         array.fill(np.nan)
 

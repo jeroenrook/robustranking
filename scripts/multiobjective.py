@@ -13,10 +13,8 @@ if __name__ == "__main__":
     del df["claimed-result"]
     del df["hash"]
     df = df.set_index(["benchmark"])
-    df = df.stack().reset_index().rename(
-        columns={"level_1": "algorithm", "benchmark": "instance", 0: "PAR2"})
+    df = df.stack().reset_index().rename(columns={"level_1": "algorithm", "benchmark": "instance", 0: "PAR2"})
     df["Solved"] = df["PAR2"] < 10000  # Solved instances
-    # df = df.set_index(["algorithm", "instance"])#.stack().reset_index().rename(columns={"level_2": "objective", 0: "value"})
 
     competition = Benchmark()
     competition.from_pandas(df, "algorithm", "instance", ["PAR2", "Solved"])
@@ -25,10 +23,15 @@ if __name__ == "__main__":
 
     comparison = MOBootstrapComparison(competition,
                                        alpha=0.05,
-                                       minimise={"PAR2": True, "Solved": False},
+                                       minimise={
+                                           "PAR2": True,
+                                           "Solved": False
+                                       },
                                        bootstrap_runs=10000,
-                                       aggregation_method={"PAR2": np.mean,
-                                                           "Solved": np.sum})
+                                       aggregation_method={
+                                           "PAR2": np.mean,
+                                           "Solved": np.sum
+                                       })
 
     # competition = Benchmark()
     # algorithms = [f"Algorithm-{i}" for i in range(1, 4)]
@@ -49,8 +52,3 @@ if __name__ == "__main__":
     comparison.compute()
 
     print(comparison.get_ranking())
-
-
-
-
-

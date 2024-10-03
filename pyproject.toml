@@ -50,3 +50,7 @@ include = ["robustranking"]
 [project.urls]
 "Homepage" = "https://github.com/jeroenrook/robustranking"
 "Repository" = "https://github.com/jeroenrook/robustranking"
+
+[tool.yapf]
+based_on_style = "pep8"
+column_limit = 120

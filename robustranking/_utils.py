@@ -1,12 +1,12 @@
+import copy
 import itertools
 from abc import ABC
-import copy
-from scipy.stats import gaussian_kde
 
-import matplotlib.pyplot as plt
 import matplotlib.patches as patches
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from scipy.stats import gaussian_kde
 
 from robustranking.comparison import BootstrapComparison
 
@@ -16,6 +16,7 @@ class PAR(ABC):
     """
     Custom aggregation function for 1-d arrays
     """
+
     def __init__(self, k=10, cutoff=60):
         """
 
@@ -53,8 +54,8 @@ def plot_distribution(comparison: BootstrapComparison, algorithm: str, ax=None):
             density=True,
             label=f"histogram (bins={bins})",
             linestyle="-",
-            color=(35/255, 134/255, 247/255),
-            edgecolor=(23/255, 90/255, 166/255),
+            color=(35 / 255, 134 / 255, 247 / 255),
+            edgecolor=(23 / 255, 90 / 255, 166 / 255),
             alpha=0.5)
 
     histogram, edges = np.histogram(distribution, bins, density=True)
@@ -64,18 +65,13 @@ def plot_distribution(comparison: BootstrapComparison, algorithm: str, ax=None):
 
     df = comparison.get_confidence_intervals()
     bounds = df.loc[algorithm, :]
-    red = (237/255, 59/255, 43/255)
-    ax.axvline(bounds["median"],
-               color=red,
-               linestyle="-",
-               label="median ({:.0f})".format(bounds["median"]))
+    red = (237 / 255, 59 / 255, 43 / 255)
+    ax.axvline(bounds["median"], color=red, linestyle="-", label="median ({:.0f})".format(bounds["median"]))
     ax.axvline(bounds["lb"],
                color=red,
                linestyle="--",
-               label="{} CI bounds ({:.0f}, {:.0f})".format(1-comparison.alpha, bounds["lb"], bounds["ub"]))
-    ax.axvline(bounds["ub"],
-               color=red,
-               linestyle="--")
+               label="{} CI bounds ({:.0f}, {:.0f})".format(1 - comparison.alpha, bounds["lb"], bounds["ub"]))
+    ax.axvline(bounds["ub"], color=red, linestyle="--")
 
     ax.set_title(algorithm)
     ax.set_xlabel("Performance")
@@ -85,6 +81,7 @@ def plot_distribution(comparison: BootstrapComparison, algorithm: str, ax=None):
     if show:
         plt.tight_layout()
         plt.show()
+
 
 def plot_distributions_comparison(comparison: BootstrapComparison,
                                   algorithms: list,
@@ -107,11 +104,9 @@ def plot_distributions_comparison(comparison: BootstrapComparison,
         x = np.linspace(np.min(distributions), np.max(distributions), 2048)
         ax.fill_between(x, kde(x), label=algorithm, alpha=0.66, edgecolor="black")
 
-        #CI shadow
+        # CI shadow
         x = np.linspace(df.loc[algorithm, "lb"], df.loc[algorithm, "ub"], 2048)
         ax.fill_between(x, kde(x), color="black", alpha=0.1)
-
-
 
     if show_p_values:
         for a1, a2 in itertools.combinations(algorithms, r=2):

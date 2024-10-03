@@ -1,12 +1,13 @@
-import pandas as pd
-import numpy as np
 import itertools
-import matplotlib.pyplot as plt
+
 import matplotlib.patches as patches
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 
 # Local
 from robustranking.benchmark import Benchmark
-from robustranking.comparison import BootstrapComparison, SubSetComparison, AggregatedComparison
+from robustranking.comparison import (AggregatedComparison, BootstrapComparison, SubSetComparison)
 from robustranking.utils import *
 
 #Artificial
@@ -23,7 +24,6 @@ from robustranking.utils import *
 # competition.add_run("Algorithm-1", "Instance-1", "Runtime", 1.0, replace=True)
 # competition = competition.filter(objectives="Runtime")
 
-
 #SAT2022
 df = pd.read_csv("./Rundata/sc2022-detailed-results/main-seq.csv")
 del df["verified-result"]
@@ -38,9 +38,11 @@ competition = Benchmark()
 competition.from_pandas(df, "algorithm", "instance", "objective", "value")
 
 print("AggregatedComparison")
-comparison = AggregatedComparison(competition,
-                                 minimise=True,
-                                 aggregation_method=np.sum,)
+comparison = AggregatedComparison(
+    competition,
+    minimise=True,
+    aggregation_method=np.sum,
+)
 
 default_df = comparison.compute().get_ranking().sort_values(("PAR2", "rank"))
 
@@ -71,7 +73,6 @@ exit()
 plt.rcParams['figure.dpi'] = 300
 plot_distribution(comparison, "Kissat_MAB-HyWalk")
 
-
 fig, axs = plt.subplots(2, 2, figsize=(12, 8), dpi=150)
 axs[0][0].set_title("Group 1 vs Group 1")
 plot_distributions_comparison(comparison, ["Kissat_MAB-HyWalk", "CaDiCaL_DVDL_V1"], ax=axs[0][0])
@@ -86,7 +87,3 @@ plt.show()
 
 plot_ci_list(comparison)
 plot_ci_list(comparison, top=10)
-
-
-
-

@@ -1,18 +1,17 @@
 import itertools
-import logging
-import copy
 
-import matplotlib.pyplot as plt
-import pandas as pd
 import numpy as np
+import pandas as pd
 
 # Local imports
-from robustranking.comparison.bootstrap_comparison import BootstrapComparison
 from robustranking.benchmark import Benchmark
-from robustranking.utils.multiobjective import fast_non_dominated_sorting, dominates, incomparable
+from robustranking.comparison.bootstrap_comparison import BootstrapComparison
+from robustranking.utils.multiobjective import dominates, incomparable
 
 
 class MODominationBootstrapComparison(BootstrapComparison):
+    """Multi-objective Bootstrap Comparison based on actual domination."""
+
     def __init__(self,
                  benchmark: Benchmark = Benchmark(),
                  minimise: [dict | bool] = True,
@@ -21,6 +20,7 @@ class MODominationBootstrapComparison(BootstrapComparison):
                  aggregation_method=np.mean,
                  rng: [int | np.random.RandomState] = 42):
         """
+        Initialise function.
 
         Args:
             benchmark: Benchmark class
@@ -32,12 +32,7 @@ class MODominationBootstrapComparison(BootstrapComparison):
                 different for each objective.
             rng: Random number generator.
         """
-        super().__init__(benchmark,
-                         minimise,
-                         bootstrap_runs,
-                         alpha,
-                         aggregation_method,
-                         rng)
+        super().__init__(benchmark, minimise, bootstrap_runs, alpha, aggregation_method, rng)
 
     def _get_distributions(self, always_minimise=True, lock=False, ranking=True) -> np.ndarray:
         if self._lock_dist:
@@ -47,7 +42,7 @@ class MODominationBootstrapComparison(BootstrapComparison):
         if not ranking:
             return dist
 
-        rank_dist = 0.5 - np.ones(dist.shape[:2] + (1,))
+        rank_dist = 0.5 - np.ones(dist.shape[:2] + (1, ))
         for sample in range(self.bootstrap_runs):
             for a1, a2 in itertools.product(range(dist.shape[0]), repeat=2):
                 # print(f"{dist[a2, sample, :]} vs {dist[a1, sample, :]}")
@@ -69,6 +64,7 @@ class MODominationBootstrapComparison(BootstrapComparison):
     def get_confidence_intervals(self, alpha: None | float = None) -> pd.DataFrame:
         """
         Computes the upper and lower bounds of the 1-alpha confidence interval.
+
         Returns:
             A pandas DataFrame with the bounds and the mean performance
         """
@@ -81,7 +77,7 @@ class MODominationBootstrapComparison(BootstrapComparison):
         median = 0.5
         upper_bound = 1 - (alpha / 2)
 
-        confidence_bounds = np.quantile(distributions,(median, lower_bound, upper_bound), axis=1)
+        confidence_bounds = np.quantile(distributions, (median, lower_bound, upper_bound), axis=1)
         df = pd.DataFrame(confidence_bounds[:, :, 0].T, columns=["median", "lb", "ub"])
         df["algorithm"] = meta_data["algorithms"]
         # if len(meta_data["objectives"]) > 1:

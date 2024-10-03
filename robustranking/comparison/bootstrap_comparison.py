@@ -1,20 +1,22 @@
-import itertools
 import copy
-import warnings
+import itertools
 import logging
+import warnings
 
-import pandas as pd
 import numpy as np
-from typing_extensions import Self
-from scipy.stats import gaussian_kde
+import pandas as pd
 from scipy.special import binom
+from scipy.stats import gaussian_kde
+from typing_extensions import Self
 
-# Local imports
-from robustranking.comparison.abstract_comparison import AbstractAlgorithmComparison
 from robustranking.benchmark import Benchmark
+# Local imports
+from robustranking.comparison.abstract_comparison import \
+    AbstractAlgorithmComparison
 
 
 class BootstrapComparison(AbstractAlgorithmComparison):
+    """Comparing algorithms based on bootstrap resampling of the instances."""
 
     def __init__(self,
                  benchmark: Benchmark = Benchmark(),
@@ -24,6 +26,7 @@ class BootstrapComparison(AbstractAlgorithmComparison):
                  aggregation_method=np.mean,
                  rng: [int | np.random.RandomState] = 42):
         """
+        Bootstrap comparison.
 
         Args:
             benchmark: Benchmark class
@@ -49,31 +52,36 @@ class BootstrapComparison(AbstractAlgorithmComparison):
 
     def _get_samples(self, num_instances: int, bootstrap_runs: int | None = None) -> np.ndarray:
         """
-        Generates the samples
+        Generates the samples.
+
         Args:
-            num_instances:
-            bootstrap_runs:
+            num_instances: number of instances.
+            bootstrap_runs: number of bootstrap samples.
 
         Returns:
-
+            samples
         """
         bootstrap_runs = self.bootstrap_runs if bootstrap_runs is None else bootstrap_runs
 
-        if binom(2*num_instances, num_instances) <= bootstrap_runs:
+        if binom(2 * num_instances, num_instances) <= bootstrap_runs:
             warnings.warn(f"There are only {binom(2*num_instances, num_instances):.0f} unique samples possible,  "
                           f"which is less than the requested {bootstrap_runs} bootstrap samples. Duplicate samples are "
                           f"inevitable. "
                           f"Consider increasing the number of instances or reducing the number of bootstraps.")
 
-        return self.rng.choice(np.arange(0, num_instances),
-                               size=(num_instances, bootstrap_runs),
-                               replace=True, )
-
+        return self.rng.choice(
+            np.arange(0, num_instances),
+            size=(num_instances, bootstrap_runs),
+            replace=True,
+        )
 
     def _statistical_test(self, s1: int, s2: int) -> float:
         """
+        Statistical test helper function
+
         Performs a statistical test on the null hypothesis that algorithm 1 (s1) is equal
         or worse that algorithm 2 (s2).
+
         Args:
             s1:
             s2:
@@ -97,8 +105,11 @@ class BootstrapComparison(AbstractAlgorithmComparison):
 
     def statistical_test(self, algorithm1: str, algorithm2: str) -> float:
         """
+        Statistical test.
+
         Performs a statistical test on the null hypothesis that algorithm 1 (s1) is equal
         or worse that algorithm 2 (s2).
+
         Args:
             algorithm1: Name of the algorithm
             algorithm2: Name of the algorithm
@@ -115,12 +126,13 @@ class BootstrapComparison(AbstractAlgorithmComparison):
 
     def compute(self) -> Self:
         """
-        Computes the bootstrap samples and collects for each algorithm the aggregated performance from each bootstrap
-        sample.
-        Returns:
+        Compute the bootstrap samples.
 
+        First the bootstrap samples are created. Then it collects for each algorithm
+        the aggregated performance from each bootstrap sample.
         """
-        assert self.benchmark.check_complete(), "Benchmark table is not complete. Cannot compare."
+        if not self.benchmark.check_complete():
+            raise ValueError("Benchmark table is not complete. Cannot compute.")
         array, meta_data = self.benchmark.to_numpy()
 
         if len(array.shape) == 2:
@@ -132,9 +144,7 @@ class BootstrapComparison(AbstractAlgorithmComparison):
         bootstraps = self._get_samples(len(meta_data["instances"]))
 
         # Compute the performance of the algorithm on each bootstrap sample
-        distributions = np.zeros((len(meta_data["algorithms"]),
-                                  self.bootstrap_runs,
-                                  len(meta_data["objectives"])))
+        distributions = np.zeros((len(meta_data["algorithms"]), self.bootstrap_runs, len(meta_data["objectives"])))
 
         for alg, obj in itertools.product(range(array.shape[0]), range(array.shape[2])):
             performance = array[alg, :, obj]
@@ -144,8 +154,7 @@ class BootstrapComparison(AbstractAlgorithmComparison):
             if isinstance(self.aggregation_method, dict):
                 agg_method = self.aggregation_method[meta_data["objectives"][obj]]
 
-            distributions[alg, :, obj] = np.apply_along_axis(agg_method, 0,
-                                                             samples)
+            distributions[alg, :, obj] = np.apply_along_axis(agg_method, 0, samples)
 
         self._cache = {
             "array": array,
@@ -161,7 +170,7 @@ class BootstrapComparison(AbstractAlgorithmComparison):
         self._dist_cache = None
 
     def _get_distributions(self, always_minimise=True, lock=False, **kwargs) -> np.ndarray:
-        #TODO check of lock request while still lock -> yield error/warning
+        # TODO check of lock request while still lock -> yield error/warning
         if self._lock_dist:
             return self._dist_cache
 
@@ -185,10 +194,10 @@ class BootstrapComparison(AbstractAlgorithmComparison):
 
         return distributions
 
-
     def get_ranking(self) -> pd.DataFrame:
         """
         Generates a robust ranking which groups statistically equal algorithm together.
+
         Returns:
             Dataframe with the algorithm as index and a columns with the rank (group) and a column with the mean
             performance over all the bootstrap samples
@@ -225,8 +234,9 @@ class BootstrapComparison(AbstractAlgorithmComparison):
             # algos, wins = np.unique(distwins, return_counts=True)
             # winner = algos[np.argmax(wins)]
 
-
-            logging.info(f"> {meta_data['algorithms'][winner]} has with {np.max(wins)/self.bootstrap_runs:.3%} the most wins out of all {np.count_nonzero(candidates_mask)} candidates.")
+            logging.info(
+                f"> {meta_data['algorithms'][winner]} has with {np.max(wins)/self.bootstrap_runs:.3%} the most "
+                f"wins out of all {np.count_nonzero(candidates_mask)} candidates.")
             groups[groupid] = [(winner, np.mean(distributions[winner, :]))]
             candidates_mask[winner] = False  # Remove winner from candidates
             # distributions[winner, :] = replace
@@ -237,9 +247,10 @@ class BootstrapComparison(AbstractAlgorithmComparison):
             candidates = np.argwhere(candidates_mask).flatten()
             pvalues = np.zeros(len(candidates))
             for i, candidate in enumerate(candidates):
-                pvalues[i] = self._statistical_test(winner,
-                                                    candidate)  # H0: winner >= candidate: winner is worse or equal than candidate
-                logging.info(f"\t> {meta_data['algorithms'][winner]} loses from {meta_data['algorithms'][candidate]} {pvalues[i]:.3%} times.")
+                pvalues[i] = self._statistical_test(
+                    winner, candidate)  # H0: winner >= candidate: winner is worse or equal than candidate
+                logging.info(f"\t> {meta_data['algorithms'][winner]} loses "
+                             f"from {meta_data['algorithms'][candidate]} {pvalues[i]:.3%} times.")
             # Multiple test correction
             # TODO iterative method instead of cutoff method as described in paper. Paragraph is illogical
             pvalues_order = np.argsort(pvalues)
@@ -249,8 +260,7 @@ class BootstrapComparison(AbstractAlgorithmComparison):
 
             # TODO iterative method instead of cutoff method as described in paper. Paragraph is illogical
             # Holm-Bonferroni
-            reject = np.zeros(len(candidates),
-                              dtype=bool)  # Do not reject any test by default
+            reject = np.zeros(len(candidates), dtype=bool)  # Do not reject any test by default
             for i, index in enumerate(pvalues_order):
                 corrected_alpha = self.alpha / (len(candidates) - i)  # Holm-Bonferroni
                 if pvalues[index] < corrected_alpha:
@@ -281,18 +291,19 @@ class BootstrapComparison(AbstractAlgorithmComparison):
             algmap = {a: i for i, a in enumerate([a[0] for a in algorithms])}
 
             for (algorithm, performance) in algorithms:
-                results.append({"algorithm": meta_data["algorithms"][algorithm],
-                                "group": group + 1,
-                                "ranked 1st": fractional_wins[algorithm],
-                                "group wins": group_wins[algmap[algorithm]],
-                                "ci_mean": np.mean(dist[algorithm, :]),
-                                "ci_median": np.median(dist[algorithm, :]),
-                                "ci_lb": np.quantile(dist[algorithm, :], self.alpha/2),
-                                "ci_ub": np.quantile(dist[algorithm, :], 1-self.alpha/2),
-                                })
+                results.append({
+                    "algorithm": meta_data["algorithms"][algorithm],
+                    "group": group + 1,
+                    "ranked 1st": fractional_wins[algorithm],
+                    "group wins": group_wins[algmap[algorithm]],
+                    "ci_mean": np.mean(dist[algorithm, :]),
+                    "ci_median": np.median(dist[algorithm, :]),
+                    "ci_lb": np.quantile(dist[algorithm, :], self.alpha / 2),
+                    "ci_ub": np.quantile(dist[algorithm, :], 1 - self.alpha / 2),
+                })
 
-        df = pd.DataFrame(results).set_index("algorithm").sort_values(
-            ["group", "ranked 1st", "ci_mean"], ascending=[True, False, self.minimise])
+        df = pd.DataFrame(results).set_index("algorithm").sort_values(["group", "ranked 1st", "ci_mean"],
+                                                                      ascending=[True, False, self.minimise])
         df["remaining"] = (1 - df["ranked 1st"].cumsum()).round(4)
 
         self._unlock_distribution()
@@ -302,6 +313,7 @@ class BootstrapComparison(AbstractAlgorithmComparison):
     def get_comparison_table(self) -> pd.DataFrame:
         """
         Creates a  table of all comparisons between all the algorithms in the benchmark
+
         Returns:
             dataframe
         """
@@ -314,7 +326,7 @@ class BootstrapComparison(AbstractAlgorithmComparison):
             rows.append({
                 "s1": meta_data["algorithms"][s1],
                 "s2": meta_data["algorithms"][s2],
-                "wins": self._statistical_test(s1, s2)*self.bootstrap_runs
+                "wins": self._statistical_test(s1, s2) * self.bootstrap_runs
             })
 
         return pd.DataFrame(rows).set_index(["s1", "s2"]).unstack("s2")
@@ -322,6 +334,7 @@ class BootstrapComparison(AbstractAlgorithmComparison):
     def get_confidence_intervals(self, alpha: None | float = None) -> pd.DataFrame:
         """
         Computes the upper and lower bounds of the 1-alpha confidence interval.
+
         Returns:
             A pandas DataFrame with the bounds and the mean performance
         """
@@ -334,7 +347,7 @@ class BootstrapComparison(AbstractAlgorithmComparison):
         median = 0.5
         upper_bound = 1 - (alpha / 2)
 
-        confidence_bounds = np.quantile(distributions,(median, lower_bound, upper_bound), axis=1)
+        confidence_bounds = np.quantile(distributions, (median, lower_bound, upper_bound), axis=1)
         alldf = []
         for obj_id, obj in enumerate(meta_data["objectives"]):
             df = pd.DataFrame(confidence_bounds[:, :, obj_id].T, columns=["median", "lb", "ub"])
@@ -349,14 +362,19 @@ class BootstrapComparison(AbstractAlgorithmComparison):
         return pd.concat(alldf)
 
     def get_bootstrap_distribution(self, algorithm: str):
+        """Helper function to get the boostrap distribution for a given algorithm."""
         cache = self._get_cache()
         if algorithm not in cache["meta_data"]["algorithms"]:
             raise LookupError(f"No distribution for '{algorithm}' found!")
         index = cache["meta_data"]["algorithms"].index(algorithm)
         return cache["distributions"][index, :]
 
-    def compute_instance_importance(self, seed: int = 42,
-                                    resolution=256) -> pd.DataFrame:
+    def compute_instance_importance(self, seed: int = 42, resolution=256) -> pd.DataFrame:
+        """
+        Compute the effect of each instance on the overall performance.
+
+        TODO (very) experimental and probably not working.
+        """
         cache = self._get_cache()
         benchmark = self.benchmark
         instances = cache["meta_data"]["instances"]
@@ -364,16 +382,16 @@ class BootstrapComparison(AbstractAlgorithmComparison):
         maximum = np.max(cache["distributions"])
 
         class KDE(object):
-            """
-            Kernel density estimation
-            """
+            """Kernel density estimation helper class"""
 
             def __init__(self, res, lb, ub):
+                """Initialize constants."""
                 self.res = res
                 self.lb = lb
                 self.ub = ub
 
             def __call__(self, array):
+                """Make class callable"""
                 x = np.linspace(self.lb, self.ub, self.res)
                 kde = gaussian_kde(array)
                 return kde(x)

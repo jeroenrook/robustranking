@@ -1,14 +1,16 @@
-import itertools
-import numpy as np
 import copy
+
+import numpy as np
+
 # HV
 
 # NDS
 
 
 def dominates(x, y):
-    """
-        assumes minimising
+    r"""
+    Note: assumes minimising.
+
     Args:
         x: list of objective vector
         y: list of objective vector
@@ -18,13 +20,18 @@ def dominates(x, y):
     """
     return np.count_nonzero(x > y) == 0 and np.count_nonzero(x < y) > 0
 
+
 def incomparable(x, y):
+    """When x and y neither dominate each other."""
     return not (dominates(x, y) or dominates(y, x))
+
 
 def fast_non_dominated_sorting(points):
     """
-    Taken from NSGA-II paper
-    #TODO cite paper and algorithm number
+    Taken from NSGA-II paper.
+
+    TODO cite paper and algorithm number
+
     Args:
         points: 2d array. shape=(points, objectives)
 
@@ -43,7 +50,7 @@ def fast_non_dominated_sorting(points):
     front = {1: set()}  # Fronts
     ranks = np.zeros(n_points, dtype=int)  # Point ranks
     for p in range(n_points):
-        #TODO optimize by using np.where
+        # TODO optimize by using np.where
         for q in range(n_points):
             if p == q:
                 continue

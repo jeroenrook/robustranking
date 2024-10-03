@@ -1,24 +1,27 @@
 import itertools
 import logging
-from typing import Sequence
+from typing import TYPE_CHECKING
 
+import matplotlib.patches as patches
+import matplotlib.pyplot as plt
+import numpy as np
+from matplotlib.colors import LinearSegmentedColormap, LogNorm
 from scipy.stats import gaussian_kde
 
-import matplotlib
-from matplotlib.colors import LinearSegmentedColormap, LogNorm
-import matplotlib.pyplot as plt
-import matplotlib.patches as patches
-import numpy as np
-
-from robustranking.comparison import BootstrapComparison, MOBootstrapComparison, MODominationBootstrapComparison
-from robustranking.comparison.abstract_comparison import AbstractAlgorithmComparison
+if TYPE_CHECKING:
+    from robustranking.comparison.abstract_comparison import \
+        AbstractAlgorithmComparison
+    from robustranking.comparison.bootstrap_comparison import \
+        BootstrapComparison
+    from robustranking.comparison.mo_bootstrap_comparison import \
+        MOBootstrapComparison
+    from robustranking.comparison.mo_domination_bootstrap_comparison import \
+        MODominationBootstrapComparison
 
 
 # Bootstrap related plots
-def plot_distribution(comparison: BootstrapComparison,
-                      algorithm: str,
-                      objective: str = None,
-                      ax: plt.axes = None):
+def plot_distribution(comparison: 'BootstrapComparison', algorithm: str, objective: str = None, ax: plt.axes = None):
+    """Plot kernel density estimates of the bootstrap distribution for an algorithm."""
     show = False
     if ax is None:
         show = True
@@ -42,8 +45,8 @@ def plot_distribution(comparison: BootstrapComparison,
             density=True,
             label=f"histogram (bins={bins})",
             linestyle="-",
-            color=(35/255, 134/255, 247/255),
-            edgecolor=(23/255, 90/255, 166/255),
+            color=(35 / 255, 134 / 255, 247 / 255),
+            edgecolor=(23 / 255, 90 / 255, 166 / 255),
             alpha=0.5)
 
     histogram, edges = np.histogram(distribution, bins, density=True)
@@ -53,18 +56,13 @@ def plot_distribution(comparison: BootstrapComparison,
 
     df = comparison.get_confidence_intervals()
     bounds = df.loc[(algorithm, objective), :]
-    red = (237/255, 59/255, 43/255)
-    ax.axvline(bounds["median"],
-               color=red,
-               linestyle="-",
-               label="median ({:.0f})".format(bounds["median"]))
+    red = (237 / 255, 59 / 255, 43 / 255)
+    ax.axvline(bounds["median"], color=red, linestyle="-", label="median ({:.0f})".format(bounds["median"]))
     ax.axvline(bounds["lb"],
                color=red,
                linestyle="--",
-               label="{} CI bounds ({:.0f}, {:.0f})".format(1-comparison.alpha, bounds["lb"], bounds["ub"]))
-    ax.axvline(bounds["ub"],
-               color=red,
-               linestyle="--")
+               label="{} CI bounds ({:.0f}, {:.0f})".format(1 - comparison.alpha, bounds["lb"], bounds["ub"]))
+    ax.axvline(bounds["ub"], color=red, linestyle="--")
 
     ax.set_title(algorithm)
     ax.set_xlabel("Performance")
@@ -75,11 +73,13 @@ def plot_distribution(comparison: BootstrapComparison,
         plt.tight_layout()
         plt.show()
 
-def plot_distributions_comparison(comparison: BootstrapComparison,
+
+def plot_distributions_comparison(comparison: 'BootstrapComparison',
                                   algorithms: list,
                                   objective: str = None,
                                   show_p_values: bool = True,
                                   ax=None):
+    """Plot the kernel density estimation of the bootstrap distribution for each algorithm."""
     show = False
     if ax is None:
         show = True
@@ -109,11 +109,9 @@ def plot_distributions_comparison(comparison: BootstrapComparison,
         x = np.linspace(np.min(distributions), np.max(distributions), 2048)
         ax.fill_between(x, kde(x), label=algorithm, alpha=0.66, edgecolor="black")
 
-        #CI shadow
+        # CI shadow
         x = np.linspace(df.loc[(algorithm, objective), "lb"], df.loc[(algorithm, objective), "ub"], 2048)
         ax.fill_between(x, kde(x), color="black", alpha=0.1)
-
-
 
     if show_p_values:
         for a1, a2 in itertools.combinations(algorithms, r=2):
@@ -128,10 +126,11 @@ def plot_distributions_comparison(comparison: BootstrapComparison,
         plt.show()
 
 
-def plot_ci_list(comparison: BootstrapComparison | MODominationBootstrapComparison,
+def plot_ci_list(comparison: ['BootstrapComparison', 'MODominationBootstrapComparison'],
                  objective: str = None,
                  top: int = -1,
                  ax=None):
+    """Plot the confidence intervals of the given comparison."""
     show = False
     if ax is None:
         show = True
@@ -148,7 +147,7 @@ def plot_ci_list(comparison: BootstrapComparison | MODominationBootstrapComparis
 
     cidf = cidf[cidf.index.isin([objective], level=1)]
     if isinstance(comparison, MODominationBootstrapComparison):
-        cidf = cidf.sort_values("median", ascending=True) #Always minimise the ranking
+        cidf = cidf.sort_values("median", ascending=True)  # Always minimise the ranking
     elif isinstance(comparison.minimise, dict):
         cidf = cidf.sort_values("median", ascending=comparison.minimise[objective])
     else:
@@ -188,14 +187,14 @@ def plot_ci_list(comparison: BootstrapComparison | MODominationBootstrapComparis
         plt.show()
 
 
-def plot_ci_density_estimations(
-        comparison: MOBootstrapComparison,
-        algorithms: list | str = None,
-        show_names: bool | dict = False,
-        show_kde: bool = True,
-        show_contours: bool = True,
-        max_samples: float = 1000,
-        ax=None):
+def plot_ci_density_estimations(comparison: 'MOBootstrapComparison',
+                                algorithms: list | str = None,
+                                show_names: bool | dict = False,
+                                show_kde: bool = True,
+                                show_contours: bool = True,
+                                max_samples: float = 1000,
+                                ax=None):
+    """Plot the confidence areas of a multi-objective ranking."""
     show = False
     if ax is None:
         show = True
@@ -204,7 +203,7 @@ def plot_ci_density_estimations(
     cache = comparison._get_cache()
     performances = cache["distributions"]
     if performances.shape[1] > max_samples:
-        performances = performances[:,:max_samples,:]
+        performances = performances[:, :max_samples, :]
     meta_data = cache["meta_data"]
 
     end_colors = [
@@ -229,21 +228,18 @@ def plot_ci_density_estimations(
         y = performances[alg, :, 1]
         k = gaussian_kde([x, y])
         resolution = 256
-        xi, yi = np.mgrid[
-                 performances[algids, :, 0].min():performances[algids, :, 0].max():resolution * 1j,
-                 performances[algids, :, 1].min():performances[algids, :, 1].max():resolution * 1j
-                 ]
+        xi, yi = np.mgrid[performances[algids, :, 0].min():performances[algids, :, 0].max():resolution * 1j,
+                          performances[algids, :, 1].min():performances[algids, :, 1].max():resolution * 1j]
         zi = k(np.vstack([xi.flatten(), yi.flatten()]))
         zi = (zi - zi.min()) / (zi.max() - zi.min())  # Normalize to be able to get quantiles
 
-        colors = [
-            (1, 1, 1, 0),
-            end_colors[cid % len(end_colors)]
-        ]
+        colors = [(1, 1, 1, 0), end_colors[cid % len(end_colors)]]
         cmap1 = LinearSegmentedColormap.from_list("alpha", colors, N=256)
 
         if show_kde:
-            ax.pcolormesh(xi, yi, zi.reshape(xi.shape),
+            ax.pcolormesh(xi,
+                          yi,
+                          zi.reshape(xi.shape),
                           shading="auto",
                           cmap=cmap1,
                           zorder=1,
@@ -252,11 +248,13 @@ def plot_ci_density_estimations(
                           rasterized=True)
         if show_contours:
             levels = [0.05, 0.25, 0.5]  # 95% and 75%, 50% ci
-            ax.contour(xi, yi, zi.reshape(xi.shape),
-                        levels=levels,
-                        colors=len(levels) * [end_colors[cid % len(end_colors)]],
-                        zorder=2,
-                        alpha=0.5)
+            ax.contour(xi,
+                       yi,
+                       zi.reshape(xi.shape),
+                       levels=levels,
+                       colors=len(levels) * [end_colors[cid % len(end_colors)]],
+                       zorder=2,
+                       alpha=0.5)
         if isinstance(show_names, dict):
             plt.text(np.mean(x), np.mean(y), f"{show_names[algname]}", zorder=30, ha="center", va="bottom", c="black")
         elif show_names:
@@ -274,19 +272,24 @@ def plot_ci_density_estimations(
         plt.tight_layout()
         plt.show()
 
+
 def plot_line_ranks(
-        comparisons: dict[str, AbstractAlgorithmComparison],
+        comparisons: dict[str, 'AbstractAlgorithmComparison'],
         objective: str = None,
         line_color: [tuple[int, int, int, int] | str] = (0, 0, 0, 0.5),
         ax=None,
 ):
+    """
+    Plot a line rank plot based on a dictionary of rankings.
+
+    The keys of the dict indicate the xticks.
+    """
     show = False
     if ax is None:
         show = True
         fig, ax = plt.subplots(figsize=(8, 8))
 
-    # TODO: Check is algorithms are consistent across comparisons
-    width, height = ax.figure.get_size_inches()
+    # TODO: Check if algorithms are consistent across comparisons
 
     lines = dict()
 
@@ -305,17 +308,17 @@ def plot_line_ranks(
         n_algorithms = len(ranking)
 
         if compid == 0:
-            ax.set_yticks(list(range(1, 1+n_algorithms)))
+            ax.set_yticks(list(range(1, 1 + n_algorithms)))
             ax.set_yticklabels(list(ranking.index)[::-1])
 
         # Points
-        ax.scatter(np.ones(n_algorithms)*compid, n_algorithms-np.arange(n_algorithms), zorder=1000, c="blue")
+        ax.scatter(np.ones(n_algorithms) * compid, n_algorithms - np.arange(n_algorithms), zorder=1000, c="blue")
 
         # Line administration
         for i, algname in enumerate(ranking.index):
             if algname not in lines:
                 lines[algname] = list()
-            lines[algname].append((compid, n_algorithms-i))
+            lines[algname].append((compid, n_algorithms - i))
 
         # Group rectangles
         if "group" in ranking.columns:
@@ -324,32 +327,31 @@ def plot_line_ranks(
             offset = n_algorithms
             for _, groupsize in groups.items():
                 bar = patches.FancyBboxPatch(
-                        (compid-0.05, offset+0.4),
-                        0.1,
-                        -(groupsize-.2),
-                        facecolor=(0, 0, 0, 0.2),
-                        boxstyle="Round4, pad=0, rounding_size=0.025",
-                        # linestyle="--",
-                        edgecolor="black",
-                        # label="{:.2f}% CI".format(1 - comparison.alpha),
-                        zorder=-1000,
-                    )
+                    (compid - 0.05, offset + 0.4),
+                    0.1,
+                    -(groupsize - .2),
+                    facecolor=(0, 0, 0, 0.2),
+                    boxstyle="Round4, pad=0, rounding_size=0.025",
+                    # linestyle="--",
+                    edgecolor="black",
+                    # label="{:.2f}% CI".format(1 - comparison.alpha),
+                    zorder=-1000,
+                )
                 if groupsize > 0:
-                    p = ax.add_patch(bar)
+                    ax.add_patch(bar)
                 offset = offset - groupsize
 
     for algname, line in lines.items():
         line = np.array(line)
         ax.plot(*line.T, c=line_color)
-        #entries
-        ax.plot((line[0, 0], line[0, 0]-0.1), (line[0, 1], line[0, 1]), c=line_color)
-        ax.plot((line[-1, 0], line[-1, 0]+0.1), (line[-1, 1], line[-1, 1]), c=line_color)
-
+        # entries
+        ax.plot((line[0, 0], line[0, 0] - 0.1), (line[0, 1], line[0, 1]), c=line_color)
+        ax.plot((line[-1, 0], line[-1, 0] + 0.1), (line[-1, 1], line[-1, 1]), c=line_color)
 
     ax.set_xticks(list(range(len(comparisons))))
     ax.set_xticklabels(comparisons.keys())
 
-    for side in ["left", "right","top", "bottom"]:
+    for side in ["left", "right", "top", "bottom"]:
         ax.spines[side].set_visible(False)
 
     if show:

@@ -1,18 +1,20 @@
+import copy
 import itertools
 import logging
-import copy
 
 import matplotlib.pyplot as plt
-import pandas as pd
 import numpy as np
+import pandas as pd
 
+from robustranking.benchmark import Benchmark
 # Local imports
 from robustranking.comparison.bootstrap_comparison import BootstrapComparison
-from robustranking.benchmark import Benchmark
-from robustranking.utils.multiobjective import fast_non_dominated_sorting, dominates
+from robustranking.utils.multiobjective import (dominates, fast_non_dominated_sorting)
 
 
 class MOBootstrapComparison(BootstrapComparison):
+    """Multi-objective boostrap comparison"""
+
     def __init__(self,
                  benchmark: Benchmark = Benchmark(),
                  minimise: [dict | bool] = True,
@@ -22,6 +24,7 @@ class MOBootstrapComparison(BootstrapComparison):
                  rng: [int | np.random.RandomState] = 42,
                  winner_threshold: float = 0.50):
         """
+        Initialize
 
         Args:
             benchmark: Benchmark class
@@ -34,18 +37,14 @@ class MOBootstrapComparison(BootstrapComparison):
             rng: Random number generator.
             winner_threshold: The ratio of being in the first dominated layer to be considered a winner.
         """
-        super().__init__(benchmark,
-                         minimise,
-                         bootstrap_runs,
-                         alpha,
-                         aggregation_method,
-                         rng)
+        super().__init__(benchmark, minimise, bootstrap_runs, alpha, aggregation_method, rng)
 
         self.winner_threshold = winner_threshold
 
     def _statistical_test(self, s1: int, s2: int) -> float:
         """
         Performs a statistical test on the null hypothesis that algorithm 1 (s1) is dominated by algorithm 2 (s2).
+
         Args:
             s1:
             s2:
@@ -87,7 +86,7 @@ class MOBootstrapComparison(BootstrapComparison):
 
         probs = []
         for o in range(len(cache["meta_data"]["objectives"])):
-            p = sum([p[0] < p[1] for p in zip(dist[s1, :, o], dist[s2, :, o])])/self.bootstrap_runs
+            p = sum([p[0] < p[1] for p in zip(dist[s1, :, o], dist[s2, :, o])]) / self.bootstrap_runs
             probs.append(p)
 
         return np.product(probs)
@@ -97,21 +96,21 @@ class MOBootstrapComparison(BootstrapComparison):
         return 1 - (self._probability_dominates(s1, s2) + self._probability_dominates(s2, s1))
 
     def hughes_ranking(self) -> pd.DataFrame:
-        # Hughes 2001
+        """Hughes 2001 probabilistic ranking"""
         cache = self._get_cache()
         meta_data = cache["meta_data"]
         n_algorithms = len(meta_data["algorithms"])
 
-        ranks = np.ones(n_algorithms)*-0.5
+        ranks = np.ones(n_algorithms) * -0.5
         for i, j in itertools.product(range(n_algorithms), repeat=2):
             ranks[i] += self._probability_dominates(j, i) + 0.5 * self._probability_indifferent(j, i)
 
         return pd.DataFrame(list(zip(meta_data["algorithms"], ranks)), columns=["Algorithm", "Rank"])
 
-
     def get_ranking(self, visualise: bool = False) -> pd.DataFrame:
         """
         Generates a robust ranking which groups statistically equal algorithm together.
+
         Returns:
             Dataframe with the algorithm as index and a columns with the rank (group) and a column with the mean
             performance over all the bootstrap samples
@@ -133,7 +132,7 @@ class MOBootstrapComparison(BootstrapComparison):
             logging.debug(f"{candidates_mask=}")
             # Find the winner amongst the remaining candidates
             # Pick the algorithm that over all has the lowest average front
-            #TODO make get_winner function since ranking is the same as with normal bootstrap
+            # TODO make get_winner function since ranking is the same as with normal bootstrap
             if np.count_nonzero(candidates_mask) > 1:
 
                 active_candidates = np.argwhere(candidates_mask).flatten()
@@ -150,7 +149,7 @@ class MOBootstrapComparison(BootstrapComparison):
                 for a, c in zip([meta_data['algorithms'][a] for a in active_candidates], in_first_layer):
                     logging.debug(f"{a:30} {c}")
 
-                winners = np.where(in_first_layer > np.max(in_first_layer)*self.winner_threshold)[0]
+                winners = np.where(in_first_layer > np.max(in_first_layer) * self.winner_threshold)[0]
                 winners = [active_candidates[winner] for winner in winners]
 
                 for rankpos, candidate in enumerate(active_candidates):
@@ -159,11 +158,11 @@ class MOBootstrapComparison(BootstrapComparison):
             else:
                 logging.info("Only one candidate left..")
                 winners = np.argwhere(candidates_mask).flatten()
-                group_wins[winner] = 1
+                group_wins[winners] = 1
 
             if visualise:
                 labels = {c: f"({c}) {meta_data['algorithms'][c]}" for c in range(n_algorithms)}
-                for c, p in zip(np.argwhere(candidates_mask).flatten(), in_first_layer/self.bootstrap_runs):
+                for c, p in zip(np.argwhere(candidates_mask).flatten(), in_first_layer / self.bootstrap_runs):
                     labels[c] += f"\n~front={p:.2f}"
 
             # winner = np.random.choice(winners)
@@ -186,7 +185,8 @@ class MOBootstrapComparison(BootstrapComparison):
                 pvalues = np.zeros(len(candidates))
                 for i, candidate in enumerate(candidates):
                     pvalues[i] = self._statistical_test(winner, candidate)  # H0: candidate dominates the winner
-                    logging.info(f"\t> {meta_data['algorithms'][winner]} is dominated by {meta_data['algorithms'][candidate]} {pvalues[i]:.3%} times.")
+                    logging.info(f"\t> {meta_data['algorithms'][winner]} is dominated by "
+                                 f"{meta_data['algorithms'][candidate]} {pvalues[i]:.3%} times.")
 
                 # Multiple test correction: Holm-Bonferroni
                 pvalues_order = np.argsort(pvalues)
@@ -240,33 +240,30 @@ class MOBootstrapComparison(BootstrapComparison):
             # algmap = {a: i for i, a in enumerate(algorithms)}
 
             for (algorithm, performance, ties) in algorithms:
-                results.append({"id": algorithm,
-                                "algorithm": meta_data["algorithms"][algorithm],
-                                "group": group + 1,
-                                "winner": len(ties) == 0,
-                                "ties": ties,
-                                #"ranked 1st": fractional_wins[algorithm],
-                                # "group wins": group_wins[algorithm] / self.bootstrap_runs,
-                                "nd_rank_mean": np.mean(global_ranking[algorithm,:]),
-                                "nd_rank_median": np.median(global_ranking[algorithm,:]),
-                                "nd_rank_ci_lb": np.quantile(global_ranking[algorithm, :], self.alpha/2),
-                                "nd_rank_ci_ub": np.quantile(global_ranking[algorithm, :], 1 - self.alpha/2),
-                                })
+                results.append({
+                    "id": algorithm,
+                    "algorithm": meta_data["algorithms"][algorithm],
+                    "group": group + 1,
+                    "winner": len(ties) == 0,
+                    "ties": ties,
+                    # "ranked 1st": fractional_wins[algorithm],
+                    # "group wins": group_wins[algorithm] / self.bootstrap_runs,
+                    "nd_rank_mean": np.mean(global_ranking[algorithm, :]),
+                    "nd_rank_median": np.median(global_ranking[algorithm, :]),
+                    "nd_rank_ci_lb": np.quantile(global_ranking[algorithm, :], self.alpha / 2),
+                    "nd_rank_ci_ub": np.quantile(global_ranking[algorithm, :], 1 - self.alpha / 2),
+                })
 
-        df = pd.DataFrame(results).set_index("id", ).sort_values(
-            ["group", "winner", "nd_rank_median"], ascending=[True, False, True])
-        #df["remaining"] = (1 - df["ranked 1st"].cumsum()).round(4)
+        df = pd.DataFrame(results).set_index("id", ).sort_values(["group", "winner", "nd_rank_median"],
+                                                                 ascending=[True, False, True])
+        # df["remaining"] = (1 - df["ranked 1st"].cumsum()).round(4)
 
         self._unlock_distribution()
 
         return df
 
-    def _plot_state(self,
-                    points: np.ndarray,
-                    winner: int = None,
-                    inactive: list[int] = None,
-                    labels: dict[str] = None):
-        fig, ax = plt.subplots(1,1, figsize=(7, 5))
+    def _plot_state(self, points: np.ndarray, winner: int = None, inactive: list[int] = None, labels: dict[str] = None):
+        fig, ax = plt.subplots(1, 1, figsize=(7, 5))
 
         meta_data = self._get_cache()["meta_data"]
         ax.set_xlabel(meta_data["objectives"][0])
@@ -290,12 +287,14 @@ class MOBootstrapComparison(BootstrapComparison):
         if labels is not None:
             for i, text in labels.items():
                 plt.text(points[i, 0], points[i, 1], text, clip_on=True, verticalalignment='center')
-            annot = ax.annotate("",
-                                xy=(0, 0),
-                                xytext=(10, 10),
-                                textcoords="offset points",
-                                bbox=dict(boxstyle="round", fc="w"),
-                                arrowprops=dict(arrowstyle="->"),)
+            annot = ax.annotate(
+                "",
+                xy=(0, 0),
+                xytext=(10, 10),
+                textcoords="offset points",
+                bbox=dict(boxstyle="round", fc="w"),
+                arrowprops=dict(arrowstyle="->"),
+            )
             annot.set_visible(False)
 
             def update_annot(ind):
