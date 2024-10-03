@@ -1,3 +1,3 @@
-from . import metrics
-from . import multiobjective
-from . import plots
+from robustranking.utils import metrics
+from robustranking.utils import multiobjective
+from robustranking.utils import plots

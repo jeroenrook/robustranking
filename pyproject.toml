@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "robustranking"
+version = "0.2"
+description = "Package for ranking algorithms"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { file = "LICENSE" }  # Path to your license file
+
+# Authors and maintainers
+authors = [
+    { name = "Jeroen Rook", email = "j.g.rook@utwente.nl" }
+]
+
+maintainers = [
+    { name = "Jeroen Rook", email = "j.g.rook@utwente.nl" }
+]
+
+# List of dependencies
+dependencies = [
+    "matplotlib>=3.5.2",
+    "numpy>=1.23",
+    "pandas",
+#    "pygmo",
+    "scipy",
+    "statsmodels",
+    "typing_extensions"
+]
+
+# Optional dependencies, categorized
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "flake8"
+]
+
+[tool.setuptools.packages.find]
+include = ["robustranking"]
+
+# Project URLs
+[project.urls]
+"Homepage" = "https://github.com/jeroenrook/robustranking"
+"Repository" = "https://github.com/jeroenrook/robustranking"

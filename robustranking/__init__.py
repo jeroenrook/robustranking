@@ -1,3 +1,3 @@
-from . import utils
-from . import comparison
-from .benchmark import Benchmark
+from robustranking import utils
+from robustranking import comparison
+from robustranking.benchmark import Benchmark
