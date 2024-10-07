@@ -23,7 +23,9 @@ class AggregatedComparison(AbstractAlgorithmComparison):
 
     def compute(self) -> Self:
         """Compute the overall performance over all instances."""
-        assert self.benchmark.check_complete()
+        if not self.benchmark.check_complete():
+            raise ValueError("Benchmark is not complete.")
+
         array, meta_data = self.benchmark.to_numpy()
 
         if len(meta_data["objectives"]) > 1 and isinstance(self.aggregation_method, dict):

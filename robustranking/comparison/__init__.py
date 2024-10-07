@@ -4,3 +4,4 @@ from robustranking.comparison.mo_bootstrap_comparison import \
     MOBootstrapComparison
 from robustranking.comparison.mo_domination_bootstrap_comparison import \
     MODominationBootstrapComparison
+from robustranking.comparison.ranked_comparison import RankedComparison
