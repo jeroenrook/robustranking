@@ -17,8 +17,8 @@ if TYPE_CHECKING:
         BootstrapComparison
     from robustranking.comparison.mo_bootstrap_comparison import \
         MOBootstrapComparison
-    from robustranking.comparison.mo_domination_bootstrap_comparison import \
-        MODominationBootstrapComparison
+from robustranking.comparison.mo_domination_bootstrap_comparison import \
+    MODominationBootstrapComparison
 
 
 # Bootstrap related plots
@@ -279,6 +279,7 @@ def plot_line_ranks(
         comparisons: dict[str, 'AbstractAlgorithmComparison'],
         objective: str = None,
         line_color: [tuple[int, int, int, int] | str] = (0, 0, 0, 0.5),
+        right_ticks: bool = False,
         ax=None,
 ):
     """
@@ -312,6 +313,14 @@ def plot_line_ranks(
         if compid == 0:
             ax.set_yticks(list(range(1, 1 + n_algorithms)))
             ax.set_yticklabels(list(ranking.index)[::-1])
+            ax.grid(False)
+            ax.set_ylim(0.5, n_algorithms + .5)
+        elif right_ticks and compid == len(comparisons) - 1:
+            ax_r = ax.twinx()
+            ax_r.set_yticks(list(range(1, 1 + n_algorithms)))
+            ax_r.set_yticklabels(list(ranking.index)[::-1])
+            ax_r.grid(False)
+            ax_r.set_ylim(0.5, n_algorithms + .5)
 
         # Points
         ax.scatter(np.ones(n_algorithms) * compid, n_algorithms - np.arange(n_algorithms), zorder=1000, c="blue")
@@ -373,6 +382,8 @@ def __compute_CD(avranks, n, alpha: float = 0.05):
     """
     from scipy.stats import studentized_range
     k = len(avranks)
+    if k <= 1:
+        return 0
     q_alpha = studentized_range.ppf(1 - alpha, k, np.inf)
     q_alpha /= np.sqrt(2)
     cd = q_alpha * (k * (k + 1) / (6.0 * n))**0.5
@@ -659,7 +670,7 @@ def __graph_ranks(avranks,
         plt.savefig(filename, bbox_inches="tight")
 
 
-def plot_critical_difference(comparison: 'AbstractAlgorithmComparison', **kwargs):
+def plot_critical_difference(comparison: 'AbstractAlgorithmComparison', alpha=0.05, **kwargs):
 
     cache = comparison._get_cache()
     meta_data = cache["meta_data"]
@@ -670,4 +681,7 @@ def plot_critical_difference(comparison: 'AbstractAlgorithmComparison', **kwargs
     avranks = list(cache["aggregation"][:, 0])
 
     print(avranks)
-    __graph_ranks(avranks, meta_data["algorithms"], cd=__compute_CD(avranks, n=len(meta_data["instances"])), **kwargs)
+    __graph_ranks(avranks,
+                  meta_data["algorithms"],
+                  cd=__compute_CD(avranks, n=len(meta_data["instances"]), alpha=alpha),
+                  **kwargs)
