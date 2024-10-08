@@ -639,12 +639,12 @@ def __graph_ranks(avranks,
         else:
             begin, end = rankpos(highv), rankpos(highv - cd)
 
-        cddistance = cline + 0.1
+        cddistance = cline - 0.325
 
         line([(begin, cddistance), (end, cddistance)], linewidth=0.7)
         line([(begin, cddistance + bigtick / 2), (begin, cddistance - bigtick / 2)], linewidth=0.7)
         line([(end, cddistance + bigtick / 2), (end, cddistance - bigtick / 2)], linewidth=0.7)
-        text((begin + end) / 2, cddistance + 0.1, "CD", ha="center", va="top")
+        text((begin + end) / 2, cddistance - 0.15, "CD", ha="center", va="top")
 
         # no-significance lines
         def draw_lines(lines, side=0.05, height=0.1):
@@ -658,7 +658,7 @@ def __graph_ranks(avranks,
     elif cd:
         begin = rankpos(avranks[cdmethod] - cd)
         end = rankpos(avranks[cdmethod] + cd)
-        line([(begin, cline), (end, cline)], linewidth=2.5)
+        line([(begin, cline + 1), (end, cline)], linewidth=2.5)
         line([(begin, cline + bigtick / 2), (begin, cline - bigtick / 2)], linewidth=2.5)
         line([(end, cline + bigtick / 2), (end, cline - bigtick / 2)], linewidth=2.5)
 
@@ -680,7 +680,6 @@ def plot_critical_difference(comparison: 'AbstractAlgorithmComparison', alpha=0.
 
     avranks = list(cache["aggregation"][:, 0])
 
-    print(avranks)
     __graph_ranks(avranks,
                   meta_data["algorithms"],
                   cd=__compute_CD(avranks, n=len(meta_data["instances"]), alpha=alpha),
