@@ -1,4 +1,6 @@
 import pytest
+import os
+import tempfile
 
 
 def test_import_module():
@@ -24,3 +26,24 @@ def test_import_submodules():
         import robustranking.utils  # noqa: F401
     except ImportError as e:
         pytest.fail(f"Failed to import submodule: {e}")
+
+
+def test_import_class():
+    """Check if importing Benchmark works"""
+    try:
+        import robustranking  # noqa: F401
+
+        robustranking.Benchmark()
+    except ImportError as e:
+        pytest.fail(f"Failed to load Benchmark class: {e}")
+
+
+def test_import_other_dir():
+    """Check if import works outside of cwd"""
+    tmpdirname = tempfile.mkdtemp()
+    os.chdir(tmpdirname)
+    try:
+        import robustranking  # noqa: F401
+        print(os.getcwd())
+    except ImportError as e:
+        pytest.fail(f"Failed to import robustranking: {e} from {os.getcwd()}")

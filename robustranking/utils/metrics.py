@@ -31,6 +31,8 @@ class PAR(ABC):
         Returns:
             PARk
         """
+        if len(array) == 0:
+            return np.nan
         array = copy.copy(array)
         array[array >= self.cutoff] = self.k * self.cutoff
         return np.mean(array)

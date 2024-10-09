@@ -4,11 +4,7 @@ import math
 import warnings
 from typing import TYPE_CHECKING
 
-import matplotlib.patches as patches
-import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib.colors import LinearSegmentedColormap, LogNorm
-from scipy.stats import gaussian_kde
 
 if TYPE_CHECKING:
     from robustranking.comparison.abstract_comparison import \
@@ -17,13 +13,20 @@ if TYPE_CHECKING:
         BootstrapComparison
     from robustranking.comparison.mo_bootstrap_comparison import \
         MOBootstrapComparison
-from robustranking.comparison.mo_domination_bootstrap_comparison import \
-    MODominationBootstrapComparison
+    from robustranking.comparison.mo_domination_bootstrap_comparison import \
+        MODominationBootstrapComparison
+    import matplotlib as plt
 
 
 # Bootstrap related plots
-def plot_distribution(comparison: 'BootstrapComparison', algorithm: str, objective: str = None, ax: plt.axes = None):
+def plot_distribution(comparison: 'BootstrapComparison', algorithm: str, objective: str = None, ax: 'plt.axes' = None):
     """Plot kernel density estimates of the bootstrap distribution for an algorithm."""
+    try:
+        import matplotlib.pyplot as plt
+        from scipy.stats import gaussian_kde
+    except ImportError:
+        raise ImportError("Function plot_distribution requires matplotlib to be installed.")
+
     show = False
     if ax is None:
         show = True
@@ -82,6 +85,12 @@ def plot_distributions_comparison(comparison: 'BootstrapComparison',
                                   show_p_values: bool = True,
                                   ax=None):
     """Plot the kernel density estimation of the bootstrap distribution for each algorithm."""
+    try:
+        import matplotlib.pyplot as plt
+        from scipy.stats import gaussian_kde
+    except ImportError:
+        raise ImportError("Function plot_distributions_comparison requires matplotlib to be installed.")
+
     show = False
     if ax is None:
         show = True
@@ -133,6 +142,14 @@ def plot_ci_list(comparison: ['BootstrapComparison', 'MODominationBootstrapCompa
                  top: int = -1,
                  ax=None):
     """Plot the confidence intervals of the given comparison."""
+    try:
+        import matplotlib.patches as patches
+        import matplotlib.pyplot as plt
+
+        from robustranking.comparison.mo_domination_bootstrap_comparison import MODominationBootstrapComparison
+    except ImportError:
+        raise ImportError("Function plot_ci_list requires matplotlib to be installed.")
+
     show = False
     if ax is None:
         show = True
@@ -162,6 +179,7 @@ def plot_ci_list(comparison: ['BootstrapComparison', 'MODominationBootstrapCompa
     ax.grid(axis="x", linestyle="--", zorder=-1)
 
     n = len(cidf) if top <= 0 else min(len(cidf), top)
+    p = None
     for i, (algorithm, bounds) in enumerate(cidf.iloc[:n].iterrows()):
         pos = n - i
         means.append([bounds["median"], pos])
@@ -177,7 +195,8 @@ def plot_ci_list(comparison: ['BootstrapComparison', 'MODominationBootstrapCompa
         p = ax.add_patch(bar)
 
     handles.append(ax.scatter(*zip(*means), color="red", label="Median", alpha=0.8))
-    handles.append(p)
+    if p is not None:
+        handles.append(p)
 
     ax.set_xlabel("Performance")
     ax.set_ylabel("Solver")
@@ -197,6 +216,13 @@ def plot_ci_density_estimations(comparison: 'MOBootstrapComparison',
                                 max_samples: float = 1000,
                                 ax=None):
     """Plot the confidence areas of a multi-objective ranking."""
+    try:
+        import matplotlib.pyplot as plt
+        from matplotlib.colors import LinearSegmentedColormap, LogNorm
+        from scipy.stats import gaussian_kde
+    except ImportError:
+        raise ImportError("Function plot_ci_density_estimations requires matplotlib to be installed.")
+
     show = False
     if ax is None:
         show = True
@@ -287,6 +313,12 @@ def plot_line_ranks(
 
     The keys of the dict indicate the xticks.
     """
+    try:
+        import matplotlib.patches as patches
+        import matplotlib.pyplot as plt
+    except ImportError:
+        raise ImportError("Function plot_line_ranks requires matplotlib to be installed.")
+
     show = False
     if ax is None:
         show = True
@@ -380,7 +412,11 @@ def __compute_CD(avranks, n, alpha: float = 0.05):
     See Janez Demsar, Statistical Comparisons of Classifiers over
     Multiple Data Sets, 7(Jan):1--30, 2006.
     """
-    from scipy.stats import studentized_range
+    try:
+        from scipy.stats import studentized_range
+    except ImportError:
+        raise ImportError()
+
     k = len(avranks)
     if k <= 1:
         return 0
@@ -442,15 +478,13 @@ def __graph_ranks(avranks,
     textspace = float(textspace)
 
     def nth(ln, n):
-        """
-        Returns only nth elemnt in a list.
-        """
+        """Returns only nth elemnt in a list."""
         n = lloc(ln, n)
         return [a[n] for a in ln]
 
     def lloc(ln, n):
-        """
-        List location in list of list structure.
+        """List location in list of list structure.
+
         Enable the use of negative locations:
         -1 is the last element, -2 second last...
         """
@@ -460,8 +494,9 @@ def __graph_ranks(avranks,
             return n
 
     def mxrange(lr):
-        """
-        Multiple xranges. Can be used to traverse matrices.
+        """Multiple xranges.
+
+        Can be used to traverse matrices.
         This function is very slow due to unknown number of
         parameters.
 
@@ -573,9 +608,7 @@ def __graph_ranks(avranks,
     ax.set_ylim(1, 0)
 
     def line(ln, color='k', **kwargs):
-        """
-        Input is a list of pairs of points.
-        """
+        """Input is a list of pairs of points."""
         ax.plot(wfl(nth(ln, 0)), hfl(nth(ln, 1)), color=color, **kwargs)
 
     def text(x, y, s, *args, **kwargs):
@@ -671,7 +704,7 @@ def __graph_ranks(avranks,
 
 
 def plot_critical_difference(comparison: 'AbstractAlgorithmComparison', alpha=0.05, **kwargs):
-
+    """Plots critical difference plot."""
     cache = comparison._get_cache()
     meta_data = cache["meta_data"]
 

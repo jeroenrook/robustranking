@@ -23,7 +23,7 @@ class RankedComparison(AbstractAlgorithmComparison):
         self.tie_method = tie_method
 
     def compute(self) -> Self:
-        """Compute the rankings on the instance level. """
+        """Compute the rankings on the instance level."""
         if not self.benchmark.check_complete():
             raise ValueError("Benchmark is not complete.")
 
