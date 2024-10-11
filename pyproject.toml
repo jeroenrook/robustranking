@@ -42,9 +42,9 @@ dev = [
     "YAPF",
     "isort",
 ]
-
-[tool.setuptools.packages.find]
-include = ["robustranking"]
+#
+#[tool.setuptools.packages.find]
+#include = ["robustranking"]
 
 # Project URLs
 [project.urls]
