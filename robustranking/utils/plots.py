@@ -302,11 +302,15 @@ def plot_ci_density_estimations(comparison: 'MOBootstrapComparison',
 
 
 def plot_line_ranks(
-        comparisons: dict[str, 'AbstractAlgorithmComparison'],
-        objective: str = None,
-        line_color: [tuple[int, int, int, int] | str] = (0, 0, 0, 0.5),
-        right_ticks: bool = False,
-        ax=None,
+    comparisons: dict[str, 'AbstractAlgorithmComparison'],
+    objective: str = None,
+    line_color: [tuple[int, int, int, int] | str] = (0, 0, 0, 0.5),
+    right_ticks: bool = False,
+    hue=None,
+    linestyle=None,
+    ax=None,
+    *args,
+    **kwargs,
 ):
     """
     Plot a line rank plot based on a dictionary of rankings.
@@ -355,7 +359,16 @@ def plot_line_ranks(
             ax_r.set_ylim(0.5, n_algorithms + .5)
 
         # Points
-        ax.scatter(np.ones(n_algorithms) * compid, n_algorithms - np.arange(n_algorithms), zorder=1000, c="blue")
+        colors = "blue"
+        if isinstance(hue, dict):
+            colors = [hue[solver] for solver in list(ranking.index)]
+        elif hue is not None:
+            colors = hue
+        ax.scatter(np.ones(n_algorithms) * compid,
+                   n_algorithms - np.arange(n_algorithms),
+                   zorder=1000,
+                   c=colors,
+                   edgecolors='black')
 
         # Line administration
         for i, algname in enumerate(ranking.index):
@@ -384,12 +397,26 @@ def plot_line_ranks(
                     ax.add_patch(bar)
                 offset = offset - groupsize
 
+    # Plot lines
     for algname, line in lines.items():
         line = np.array(line)
-        ax.plot(*line.T, c=line_color)
-        # entries
-        ax.plot((line[0, 0], line[0, 0] - 0.1), (line[0, 1], line[0, 1]), c=line_color)
-        ax.plot((line[-1, 0], line[-1, 0] + 0.1), (line[-1, 1], line[-1, 1]), c=line_color)
+        style = dict()
+        if isinstance(hue, dict):
+            style["c"] = hue[algname]
+        elif linestyle is not None:
+            style["c"] = linestyle
+        elif hue is not None:
+            style["c"] = hue
+
+        if isinstance(linestyle, dict):
+            style["ls"] = linestyle[algname]
+        elif linestyle is not None:
+            style["ls"] = linestyle
+
+        ax.plot(*line.T, **style)
+        # Entries
+        ax.plot((line[0, 0], line[0, 0] - 0.1), (line[0, 1], line[0, 1]), **style)
+        ax.plot((line[-1, 0], line[-1, 0] + 0.1), (line[-1, 1], line[-1, 1]), **style)
 
     ax.set_xticks(list(range(len(comparisons))))
     ax.set_xticklabels(comparisons.keys())
@@ -712,6 +739,8 @@ def plot_critical_difference(comparison: 'AbstractAlgorithmComparison', alpha=0.
         warnings.warn(f"More than one objectives detected! Only using the first one; '{meta_data['objectives'][0]}'")
 
     avranks = list(cache["aggregation"][:, 0])
+
+    print("TEST")
 
     __graph_ranks(avranks,
                   meta_data["algorithms"],
